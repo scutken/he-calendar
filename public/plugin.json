@@ -1,0 +1,20 @@
+{
+  "main": "index.html",
+  "preload": "preload/services.js",
+  "logo": "logo.png",
+  "development": {
+    "main": "http://localhost:5173"
+  },
+  "features": [
+    {
+      "code": "calendar",
+      "explain": "合社日历 - 有温度的中国风日历🍵",
+      "cmds": [
+        "日历",
+        "万年历",
+        "黄历",
+        "calendar"
+      ]
+    }
+  ]
+}
