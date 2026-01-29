@@ -5,6 +5,10 @@
   "development": {
     "main": "http://localhost:5173"
   },
+  "pluginSetting": {
+    "single": true,
+    "height": 600
+  },
   "features": [
     {
       "code": "calendar",
