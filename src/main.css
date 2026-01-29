@@ -8,11 +8,15 @@ body,
   overflow: hidden;
 }
 
-/* 网页版背景 - 大屏幕时显示渐变背景 */
+/* 网页版背景 - 大屏幕时显示简约优雅的背景 */
 @media (min-width: 1024px) {
   body:not(.is-utools) {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+    background-color: #f8fafc;
+    background-image: 
+      radial-gradient(at 0% 0%, var(--bg-color, #f8fafc) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, rgba(0, 0, 0, 0.02) 0px, transparent 50%);
     background-attachment: fixed;
+    transition: background-color 0.5s ease;
   }
 }
 

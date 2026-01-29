@@ -1,8 +1,9 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import dayjs from 'dayjs';
 import { Solar, Lunar, HolidayUtil } from 'lunar-javascript';
-import { ChevronLeft, ChevronRight, Palette } from 'lucide-vue-next';
+import { ChevronLeft, ChevronRight, Palette, Settings, Github, ExternalLink, User } from 'lucide-vue-next';
+import { projectConfig } from '../config';
 
 const props = defineProps(['enterAction']);
 
@@ -11,6 +12,10 @@ const selectedDate = ref(dayjs());
 const currentTheme = ref('auto'); // 默认为智能主题
 const showYearPicker = ref(false);
 const showMonthPicker = ref(false);
+const showThemePicker = ref(false);
+const showSettings = ref(false);
+const weekStartDay = ref(parseInt(localStorage.getItem('calendar-week-start') || '0'));
+const previewTheme = ref(null);
 const yearPickerOffset = ref(0); // 年份选择器的偏移量
 
 // 24节气主题配色（基于中国传统色）
@@ -70,7 +75,7 @@ const months = [
 ];
 
 const themes = [
-  { id: 'auto', name: '智能动态', color: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
+  { id: 'auto', name: '智能动态', color: 'linear-gradient(135deg, #8DB5D8 0%, #E9BB4E 100%)' },
   { id: 'default', name: '素雅', color: '#A3D5E0' },
   { id: 'ink', name: '水墨', color: '#111827' },
   { id: 'red', name: '朱红', color: '#b91c1c' },
@@ -86,9 +91,17 @@ const getCurrentSolarTerm = () => {
   return term ? term.getName() : '立春';
 };
 
+// 获取当前节气对应的动态主题名称
+const dynamicThemeName = computed(() => {
+  const solarTerm = getCurrentSolarTerm();
+  const termTheme = solarTermThemes[solarTerm] || solarTermThemes['立春'];
+  return termTheme.name;
+});
+
 // 计算当前应用的主题
 const activeThemeConfig = computed(() => {
-  if (currentTheme.value === 'auto') {
+  const themeId = previewTheme.value || currentTheme.value;
+  if (themeId === 'auto') {
     const solarTerm = getCurrentSolarTerm();
     const termTheme = solarTermThemes[solarTerm] || solarTermThemes['立春'];
     return {
@@ -102,20 +115,21 @@ const activeThemeConfig = computed(() => {
   
   // 静态主题
   const themeMap = {
-    'default': { primaryColor: '#A3D5E0', bgColor: '#f9fafb', accentColor: '#7db4c4' },
-    'ink': { primaryColor: '#111827', bgColor: '#f3f4f6', accentColor: '#374151' },
-    'red': { primaryColor: '#b91c1c', bgColor: '#fff1f2', accentColor: '#b91c1c' },
-    'gold': { primaryColor: '#b45309', bgColor: '#fffbeb', accentColor: '#b45309' },
-    'cyan': { primaryColor: '#1e40af', bgColor: '#eff6ff', accentColor: '#1e40af' },
+    'default': { primaryColor: '#A3D5E0', bgColor: '#f9fafb', accentColor: '#7db4c4', name: '素雅' },
+    'ink': { primaryColor: '#111827', bgColor: '#f3f4f6', accentColor: '#374151', name: '水墨' },
+    'red': { primaryColor: '#b91c1c', bgColor: '#fff1f2', accentColor: '#b91c1c', name: '朱红' },
+    'gold': { primaryColor: '#b45309', bgColor: '#fffbeb', accentColor: '#b45309', name: '鎏金' },
+    'cyan': { primaryColor: '#1e40af', bgColor: '#eff6ff', accentColor: '#1e40af', name: '黛蓝' },
   };
   
-  return themeMap[currentTheme.value] || themeMap['default'];
+  return themeMap[themeId] || themeMap['default'];
 });
 
 const switchTheme = (themeId) => {
   currentTheme.value = themeId;
   localStorage.setItem('calendar-theme', themeId);
   applyTheme();
+  showThemePicker.value = false; // 选中后隐藏选择列表
 };
 
 // 应用主题
@@ -131,10 +145,12 @@ const applyTheme = () => {
 // Generate calendar days
 const calendarDays = computed(() => {
   const startOfMonth = currentMonth.value.startOf('month');
-  const endOfMonth = currentMonth.value.endOf('month');
   
-  // Get the start of the grid (Sunday of the week containing the 1st of the month)
-  let start = startOfMonth.startOf('week');
+  // Calculate the first day of the calendar grid
+  const firstDayOfWeek = startOfMonth.day();
+  const daysToSubtract = (firstDayOfWeek - weekStartDay.value + 7) % 7;
+  const start = startOfMonth.subtract(daysToSubtract, 'day');
+  
   const days = [];
   
   // Create 6 weeks (42 days)
@@ -165,7 +181,15 @@ const calendarDays = computed(() => {
   return days;
 });
 
-const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
+const baseWeekDays = ['日', '一', '二', '三', '四', '五', '六'];
+const weekDays = computed(() => {
+  const days = [...baseWeekDays];
+  if (weekStartDay.value === 1) {
+    const sun = days.shift();
+    days.push(sun);
+  }
+  return days;
+});
 
 const nextMonth = () => {
   currentMonth.value = currentMonth.value.add(1, 'month');
@@ -208,9 +232,35 @@ const toggleMonthPicker = () => {
   showYearPicker.value = false;
 };
 
+const setWeekStartDay = (day) => {
+  weekStartDay.value = day;
+  localStorage.setItem('calendar-week-start', day);
+};
+
+const toggleSettings = () => {
+  showSettings.value = !showSettings.value;
+  if (showSettings.value) {
+    showYearPicker.value = false;
+    showMonthPicker.value = false;
+    showThemePicker.value = false;
+  }
+};
+
+const toggleThemePicker = () => {
+  showThemePicker.value = !showThemePicker.value;
+  if (showThemePicker.value) {
+    showYearPicker.value = false;
+    showMonthPicker.value = false;
+    showSettings.value = false;
+  }
+};
+
 const closePickers = () => {
   showYearPicker.value = false;
   showMonthPicker.value = false;
+  showSettings.value = false;
+  showThemePicker.value = false;
+  previewTheme.value = null;
   yearPickerOffset.value = 0;
 };
 
@@ -277,7 +327,7 @@ const almanacInfo = computed(() => {
   
   return {
     solarDate: date.format('YYYY年MM月DD日'),
-    weekDay: '星期' + weekDays[date.day()],
+    weekDay: '星期' + baseWeekDays[date.day()],
     lunarDate: `${lunar.getYearInGanZhi()}(${lunar.getYearShengXiao()})年 ${lunar.getMonthInChinese()}月${lunar.getDayInChinese()}`,
     ganZhi: `${lunar.getYearInGanZhi()}年 ${lunar.getMonthInGanZhi()}月 ${lunar.getDayInGanZhi()}日`,
     yi: lunar.getDayYi(),
@@ -291,6 +341,18 @@ const almanacInfo = computed(() => {
   };
 });
 
+// 全局点击监听，用于关闭弹出菜单
+const handleGlobalClick = (e) => {
+  // 如果点击的目标不在弹出菜单内，也不在触发按钮内，则关闭菜单
+  const isClickInsideTheme = e.target.closest('.theme-picker');
+  const isClickInsideSettings = e.target.closest('.settings-wrapper');
+  const isClickInsideYearPicker = e.target.closest('.year-month');
+  
+  if (!isClickInsideTheme && !isClickInsideSettings && !isClickInsideYearPicker) {
+    closePickers();
+  }
+};
+
 onMounted(() => {
   const savedTheme = localStorage.getItem('calendar-theme') || 'auto';
   currentTheme.value = savedTheme;
@@ -299,6 +361,13 @@ onMounted(() => {
   if (props.enterAction && props.enterAction.code === 'calendar') {
     // Already set by default ref
   }
+
+  // 网页版添加全局点击监听
+  window.addEventListener('click', handleGlobalClick);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('click', handleGlobalClick);
 });
 
 // 监听主题变化
@@ -308,7 +377,7 @@ watch(activeThemeConfig, () => {
 </script>
 
 <template>
-  <div class="calendar-container" :class="'theme-' + currentTheme" @wheel.prevent="handleScroll" @click="closePickers">
+  <div class="calendar-container" :class="'theme-' + currentTheme" @wheel.prevent="handleScroll">
     <!-- Header -->
     <header class="calendar-header">
       <div class="current-info" @click.stop>
@@ -352,19 +421,76 @@ watch(activeThemeConfig, () => {
         <button @click="nextMonth" class="icon-btn"><ChevronRight :size="20" /></button>
         
         <div class="theme-picker">
-          <div class="theme-icon-wrapper">
+          <button @click.stop="toggleThemePicker" class="icon-btn theme-trigger" :class="{ active: showThemePicker }">
             <Palette :size="20" class="theme-icon" />
-          </div>
-          <div class="theme-options">
-            <button 
+          </button>
+          <div v-if="showThemePicker" class="theme-options shadow-lg" @click.stop>
+            <div 
               v-for="t in themes" 
               :key="t.id" 
+              class="theme-option-item"
               @click="switchTheme(t.id)"
-              :style="{ background: t.color }"
-              :title="t.id === 'auto' ? activeThemeConfig.name : t.name"
-              class="theme-dot"
-              :class="{ active: currentTheme === t.id }"
-            ></button>
+              @mouseenter="previewTheme = t.id"
+              @mouseleave="previewTheme = null"
+            >
+              <div 
+                :style="{ background: t.color }"
+                class="theme-dot"
+                :class="{ active: currentTheme === t.id }"
+              ></div>
+              <span class="theme-name">{{ t.id === 'auto' ? dynamicThemeName : t.name }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-wrapper">
+          <button @click.stop="toggleSettings" class="icon-btn" :class="{ active: showSettings }">
+            <Settings :size="20" />
+          </button>
+          
+          <div v-if="showSettings" class="settings-panel shadow-lg" @click.stop>
+            <div class="settings-section">
+              <div class="section-title">周起始日</div>
+              <div class="setting-options">
+                <button 
+                  class="option-btn" 
+                  :class="{ active: weekStartDay === 0 }"
+                  @click="setWeekStartDay(0)"
+                >周日</button>
+                <button 
+                  class="option-btn" 
+                  :class="{ active: weekStartDay === 1 }"
+                  @click="setWeekStartDay(1)"
+                >周一</button>
+              </div>
+            </div>
+            
+            <div class="settings-separator"></div>
+            
+            <div class="settings-section">
+              <div class="section-title">
+                关于{{ projectConfig.name }}
+                <span class="version-badge">v{{ projectConfig.version }}</span>
+              </div>
+              <div class="about-info">
+                <div class="about-item">
+                  <Github :size="14" class="about-icon" />
+                  <a :href="projectConfig.github" target="_blank">GitHub 源码</a>
+                </div>
+                <div class="about-item">
+                  <ExternalLink :size="14" class="about-icon" />
+                  <a :href="projectConfig.website" target="_blank">网页版地址</a>
+                </div>
+                <div class="about-item">
+                  <User :size="14" class="about-icon" />
+                  <span>作者: {{ projectConfig.author }}</span>
+                </div>
+              </div>
+            </div>
+            
+            <div class="settings-footer">
+              <div class="slogan">{{ projectConfig.description }}</div>
+            </div>
           </div>
         </div>
       </div>
@@ -565,7 +691,7 @@ watch(activeThemeConfig, () => {
   border-radius: 6px;
   padding: 4px 8px;
   cursor: pointer;
-  color: var(--text-color);
+  color: var(--primary-color);
   transition: all 0.2s;
   display: flex;
   align-items: center;
@@ -577,64 +703,76 @@ watch(activeThemeConfig, () => {
   border-color: var(--primary-color);
 }
 
+.icon-btn.active, .icon-btn:hover {
+  background-color: rgba(0,0,0,0.05);
+  border-color: var(--primary-color);
+}
+
+.theme-trigger {
+  /* 统一使用 icon-btn 的颜色定义 */
+}
+
 .theme-picker {
   position: relative;
-  margin-left: 8px;
   display: flex;
   align-items: center;
-}
-
-.theme-icon-wrapper {
-  padding: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  border-radius: 6px;
-  transition: background-color 0.2s;
-}
-
-.theme-icon-wrapper:hover {
-  background-color: rgba(0,0,0,0.05);
-}
-
-.theme-icon {
-  color: var(--primary-color);
-  display: block;
 }
 
 .theme-options {
   position: absolute;
-  top: 100%;
-  right: -8px;
+  top: calc(100% + 12px);
+  right: 0;
   background: white;
-  padding: 12px;
-  border-radius: 8px;
+  padding: 8px;
+  border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  opacity: 0;
-  visibility: hidden;
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  gap: 4px;
   z-index: 100;
-  transition: opacity 0.2s, visibility 0.2s;
-  pointer-events: none;
+  border: 1px solid rgba(0,0,0,0.05);
+  min-width: 140px;
 }
 
-.theme-picker:hover .theme-options,
+/* 移除悬停触发逻辑 */
+.theme-picker::after {
+  display: none;
+}
+
+/* 移除悬停显示逻辑 */
 .theme-options:hover {
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
+  /* 保持显示由 v-if 控制 */
 }
 
 .theme-dot {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   border: 2px solid transparent;
   cursor: pointer;
   transition: all 0.2s;
   background: var(--dot-bg, #ccc);
+  flex-shrink: 0;
+}
+
+.theme-option-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background-color 0.2s;
+  white-space: nowrap;
+}
+
+.theme-option-item:hover {
+  background-color: rgba(0,0,0,0.05);
+}
+
+.theme-name {
+  font-size: 0.85rem;
+  color: var(--text-color);
 }
 
 .theme-dot:hover {
@@ -642,8 +780,154 @@ watch(activeThemeConfig, () => {
 }
 
 .theme-dot.active {
-  border-color: #000;
-  box-shadow: 0 0 0 2px rgba(0,0,0,0.1);
+  border: 2px solid white;
+  box-shadow: 0 0 0 2px var(--primary-color);
+}
+
+.settings-wrapper {
+  position: relative;
+}
+
+.settings-panel {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  width: 200px;
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  z-index: 300;
+  border: 1px solid rgba(0,0,0,0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.section-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.version-badge {
+  font-size: 0.65rem;
+  font-weight: 500;
+  padding: 1px 6px;
+  background: var(--bg-color);
+  border: 1px solid var(--accent-color);
+  border-radius: 4px;
+  color: var(--accent-color);
+  letter-spacing: 0;
+}
+
+.settings-footer {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--bg-color);
+  text-align: center;
+}
+
+.slogan {
+  font-size: 0.75rem;
+  color: var(--accent-color);
+  font-style: italic;
+  opacity: 0.8;
+  position: relative;
+  display: inline-block;
+}
+
+.slogan::before, .slogan::after {
+  content: '"';
+  font-family: serif;
+  opacity: 0.5;
+  font-size: 1.2rem;
+  line-height: 1;
+  vertical-align: middle;
+  color: var(--primary-color);
+}
+
+.slogan::before { margin-right: 2px; }
+.slogan::after { margin-left: 2px; }
+
+.setting-options {
+  display: flex;
+  background: #f3f4f6;
+  padding: 3px;
+  border-radius: 8px;
+}
+
+.option-btn {
+  flex: 1;
+  border: none;
+  background: none;
+  padding: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  border-radius: 6px;
+  color: #6b7280;
+  transition: all 0.2s;
+}
+
+.option-btn.active {
+  background: white;
+  color: var(--primary-color);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.settings-separator {
+  height: 1px;
+  background: #f3f4f6;
+  margin: 4px 0;
+}
+
+.about-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.about-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: #4b5563;
+}
+
+.about-icon {
+  color: var(--accent-color);
+  opacity: 0.8;
+}
+
+.about-item a {
+  color: #4b5563;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.about-item a:hover {
+  color: var(--primary-color);
+}
+
+.icon-btn.active {
+  background-color: rgba(0,0,0,0.05);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.shadow-lg {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
 .main-content {
