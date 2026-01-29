@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import dayjs from 'dayjs';
 import { Solar, Lunar, HolidayUtil } from 'lunar-javascript';
-import { ChevronLeft, ChevronRight, Palette, Settings, Github, ExternalLink, User } from 'lucide-vue-next';
+import { ChevronLeft, ChevronRight, Palette, Settings, Github, ExternalLink, User, Sun, Moon, Monitor } from 'lucide-vue-next';
 import { projectConfig } from '../config';
 
 const props = defineProps(['enterAction']);
@@ -14,6 +14,7 @@ const showYearPicker = ref(false);
 const showMonthPicker = ref(false);
 const showThemePicker = ref(false);
 const showSettings = ref(false);
+const colorMode = ref(localStorage.getItem('calendar-color-mode') || 'auto'); // light, dark, auto
 const weekStartDay = ref(parseInt(localStorage.getItem('calendar-week-start') || '0'));
 const previewTheme = ref(null);
 const yearPickerOffset = ref(0); // 年份选择器的偏移量
@@ -98,31 +99,49 @@ const dynamicThemeName = computed(() => {
   return termTheme.name;
 });
 
-// 计算当前应用的主题
-const activeThemeConfig = computed(() => {
-  const themeId = previewTheme.value || currentTheme.value;
+// 判断当前是否处于深色模式
+const isDarkMode = computed(() => {
+  if (colorMode.value === 'auto') {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  return colorMode.value === 'dark';
+});
+
+// 获取指定主题的配置
+const getThemeConfigById = (themeId) => {
+  const isDark = isDarkMode.value;
+  
   if (themeId === 'auto') {
     const solarTerm = getCurrentSolarTerm();
     const termTheme = solarTermThemes[solarTerm] || solarTermThemes['立春'];
     return {
       id: 'auto',
       primaryColor: termTheme.color,
-      bgColor: termTheme.bgColor,
+      bgColor: isDark ? '#1a1a1a' : termTheme.bgColor,
       accentColor: termTheme.accentColor,
       name: termTheme.name,
     };
   }
   
-  // 静态主题
   const themeMap = {
-    'default': { primaryColor: '#A3D5E0', bgColor: '#f9fafb', accentColor: '#7db4c4', name: '素雅' },
-    'ink': { primaryColor: '#111827', bgColor: '#f3f4f6', accentColor: '#374151', name: '水墨' },
-    'red': { primaryColor: '#b91c1c', bgColor: '#fff1f2', accentColor: '#b91c1c', name: '朱红' },
-    'gold': { primaryColor: '#b45309', bgColor: '#fffbeb', accentColor: '#b45309', name: '鎏金' },
-    'cyan': { primaryColor: '#1e40af', bgColor: '#eff6ff', accentColor: '#1e40af', name: '黛蓝' },
+    'default': { primaryColor: '#A3D5E0', bgColor: isDark ? '#1a1a1a' : '#f9fafb', accentColor: '#7db4c4', name: '素雅' },
+    'ink': { primaryColor: isDark ? '#9ca3af' : '#111827', bgColor: isDark ? '#111827' : '#f3f4f6', accentColor: isDark ? '#6b7280' : '#374151', name: '水墨' },
+    'red': { primaryColor: '#b91c1c', bgColor: isDark ? '#1a1a1a' : '#fff1f2', accentColor: '#b91c1c', name: '朱红' },
+    'gold': { primaryColor: '#b45309', bgColor: isDark ? '#1a1a1a' : '#fffbeb', accentColor: '#b45309', name: '鎏金' },
+    'cyan': { primaryColor: '#1e40af', bgColor: isDark ? '#1a1a1a' : '#eff6ff', accentColor: '#1e40af', name: '黛蓝' },
   };
   
   return themeMap[themeId] || themeMap['default'];
+};
+
+// 计算当前应用的主题（包含预览）
+const activeThemeConfig = computed(() => {
+  return getThemeConfigById(previewTheme.value || currentTheme.value);
+});
+
+// 计算已保存的主题配置
+const savedThemeConfig = computed(() => {
+  return getThemeConfigById(currentTheme.value);
 });
 
 const switchTheme = (themeId) => {
@@ -135,11 +154,41 @@ const switchTheme = (themeId) => {
 // 应用主题
 const applyTheme = () => {
   const theme = activeThemeConfig.value;
+  const savedTheme = savedThemeConfig.value;
   const root = document.documentElement;
+  const isDark = isDarkMode.value;
   
   root.style.setProperty('--primary-color', theme.primaryColor);
   root.style.setProperty('--bg-color', theme.bgColor);
   root.style.setProperty('--accent-color', theme.accentColor);
+  root.style.setProperty('--saved-primary-color', savedTheme.primaryColor);
+  
+  // 夜间模式变量
+  if (isDark) {
+    root.style.setProperty('--text-color', '#e5e7eb');
+    root.style.setProperty('--header-bg', '#1e1e1e');
+    root.style.setProperty('--cell-bg', '#262626');
+    root.style.setProperty('--border-color', 'rgba(255,255,255,0.08)');
+    root.style.setProperty('--hover-bg', 'rgba(255,255,255,0.05)');
+    root.style.setProperty('--panel-bg', '#1e1e1e');
+    root.style.setProperty('--secondary-text', '#9ca3af');
+    root.style.setProperty('--scrollbar-thumb', 'rgba(255,255,255,0.2)');
+  } else {
+    root.style.setProperty('--text-color', '#1f2937');
+    root.style.setProperty('--header-bg', '#ffffff');
+    root.style.setProperty('--cell-bg', '#ffffff');
+    root.style.setProperty('--border-color', 'rgba(0,0,0,0.06)');
+    root.style.setProperty('--hover-bg', 'rgba(0,0,0,0.03)');
+    root.style.setProperty('--panel-bg', '#ffffff');
+    root.style.setProperty('--secondary-text', '#6b7280');
+    root.style.setProperty('--scrollbar-thumb', 'rgba(0,0,0,0.1)');
+  }
+};
+
+const switchColorMode = (mode) => {
+  colorMode.value = mode;
+  localStorage.setItem('calendar-color-mode', mode);
+  applyTheme();
 };
 
 // Generate calendar days
@@ -353,6 +402,10 @@ const handleGlobalClick = (e) => {
   }
 };
 
+watch([isDarkMode, activeThemeConfig], () => {
+  applyTheme();
+}, { deep: true });
+
 onMounted(() => {
   const savedTheme = localStorage.getItem('calendar-theme') || 'auto';
   currentTheme.value = savedTheme;
@@ -364,6 +417,13 @@ onMounted(() => {
 
   // 网页版添加全局点击监听
   window.addEventListener('click', handleGlobalClick);
+  
+  // 监听系统主题变化
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (colorMode.value === 'auto') {
+      applyTheme();
+    }
+  });
 });
 
 onUnmounted(() => {
@@ -377,7 +437,7 @@ watch(activeThemeConfig, () => {
 </script>
 
 <template>
-  <div class="calendar-container" :class="'theme-' + currentTheme" @wheel.prevent="handleScroll">
+  <div class="calendar-container" :class="['theme-' + currentTheme, isDarkMode ? 'dark-mode' : 'light-mode']" :data-mode="isDarkMode ? 'dark' : 'light'" @wheel.prevent="handleScroll">
     <!-- Header -->
     <header class="calendar-header">
       <div class="current-info" @click.stop>
@@ -425,6 +485,33 @@ watch(activeThemeConfig, () => {
             <Palette :size="20" class="theme-icon" />
           </button>
           <div v-if="showThemePicker" class="theme-options shadow-lg" @click.stop>
+            <div class="color-mode-switch">
+              <button 
+                class="mode-btn" 
+                :class="{ active: colorMode === 'light' }" 
+                @click="switchColorMode('light')"
+                title="日间模式"
+              >
+                <Sun :size="16" />
+              </button>
+              <button 
+                class="mode-btn" 
+                :class="{ active: colorMode === 'dark' }" 
+                @click="switchColorMode('dark')"
+                title="夜间模式"
+              >
+                <Moon :size="16" />
+              </button>
+              <button 
+                class="mode-btn" 
+                :class="{ active: colorMode === 'auto' }" 
+                @click="switchColorMode('auto')"
+                title="跟随系统"
+              >
+                <Monitor :size="16" />
+              </button>
+            </div>
+            <div class="settings-separator"></div>
             <div 
               v-for="t in themes" 
               :key="t.id" 
@@ -566,25 +653,13 @@ watch(activeThemeConfig, () => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background-color: var(--bg-color, #fff);
-  color: var(--text-color, #333);
+  background-color: var(--bg-color);
+  color: var(--text-color);
   font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
   overflow: hidden;
   user-select: none;
-  --text-color: #1f2937;
-  --header-bg: #ffffff;
-  --cell-bg: #ffffff;
   --rest-color: #ef4444;
   --work-color: #6b7280;
-}
-
-/* Themes - 保留兼容性，但主要通过CSS变量控制 */
-.theme-default,
-.theme-ink,
-.theme-red,
-.theme-gold,
-.theme-cyan {
-  /* 主题由JS动态设置 CSS 变量 */
 }
 
 .calendar-header {
@@ -593,7 +668,7 @@ watch(activeThemeConfig, () => {
   align-items: center;
   padding: 12px 20px;
   background-color: var(--header-bg);
-  border-bottom: 1px solid rgba(0,0,0,0.05);
+  border-bottom: 1px solid var(--border-color);
   box-shadow: 0 2px 4px rgba(0,0,0,0.02);
 }
 
@@ -609,12 +684,12 @@ watch(activeThemeConfig, () => {
 }
 
 .year-month:hover {
-  background-color: rgba(0,0,0,0.05);
+  background-color: var(--hover-bg);
 }
 
 .year-month.active {
   background-color: var(--primary-color);
-  color: white;
+  color: #ffffff;
 }
 
 .day-diff {
@@ -622,7 +697,7 @@ watch(activeThemeConfig, () => {
   color: var(--accent-color);
   margin-left: 8px;
   padding: 2px 8px;
-  background-color: rgba(0,0,0,0.05);
+  background-color: var(--hover-bg);
   border-radius: 4px;
 }
 
@@ -637,11 +712,12 @@ watch(activeThemeConfig, () => {
   top: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
-  background: white;
+  background: var(--panel-bg);
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
   z-index: 200;
   min-width: 120px;
+  border: 1px solid var(--border-color);
 }
 
 .year-picker {
@@ -670,12 +746,12 @@ watch(activeThemeConfig, () => {
 }
 
 .picker-item:hover {
-  background-color: rgba(0,0,0,0.05);
+  background-color: var(--hover-bg);
 }
 
 .picker-item.active {
   background-color: var(--primary-color);
-  color: white;
+  color: #ffffff;
   font-weight: 600;
 }
 
@@ -687,7 +763,7 @@ watch(activeThemeConfig, () => {
 
 .icon-btn, .text-btn {
   background: none;
-  border: 1px solid rgba(0,0,0,0.1);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   padding: 4px 8px;
   cursor: pointer;
@@ -699,12 +775,12 @@ watch(activeThemeConfig, () => {
 }
 
 .icon-btn:hover, .text-btn:hover {
-  background-color: rgba(0,0,0,0.05);
+  background-color: var(--hover-bg);
   border-color: var(--primary-color);
 }
 
 .icon-btn.active, .icon-btn:hover {
-  background-color: rgba(0,0,0,0.05);
+  background-color: var(--hover-bg);
   border-color: var(--primary-color);
 }
 
@@ -722,7 +798,7 @@ watch(activeThemeConfig, () => {
   position: absolute;
   top: calc(100% + 12px);
   right: 0;
-  background: white;
+  background: var(--panel-bg);
   padding: 8px;
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
@@ -730,8 +806,41 @@ watch(activeThemeConfig, () => {
   flex-direction: column;
   gap: 4px;
   z-index: 100;
-  border: 1px solid rgba(0,0,0,0.05);
+  border: 1px solid var(--border-color);
   min-width: 140px;
+}
+
+.color-mode-switch {
+  display: flex;
+  gap: 4px;
+  padding: 2px;
+  background: var(--hover-bg);
+  border-radius: 8px;
+  margin-bottom: 4px;
+}
+
+.mode-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--secondary-text);
+  transition: all 0.2s;
+}
+
+.mode-btn:hover {
+  background: rgba(255,255,255,0.1);
+}
+
+.mode-btn.active {
+  background: var(--panel-bg);
+  color: var(--primary-color);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 /* 移除悬停触发逻辑 */
@@ -767,7 +876,7 @@ watch(activeThemeConfig, () => {
 }
 
 .theme-option-item:hover {
-  background-color: rgba(0,0,0,0.05);
+  background-color: var(--hover-bg);
 }
 
 .theme-name {
@@ -781,7 +890,7 @@ watch(activeThemeConfig, () => {
 
 .theme-dot.active {
   border: 2px solid white;
-  box-shadow: 0 0 0 2px var(--primary-color);
+  box-shadow: 0 0 0 2px var(--saved-primary-color);
 }
 
 .settings-wrapper {
@@ -793,11 +902,11 @@ watch(activeThemeConfig, () => {
   top: calc(100% + 12px);
   right: 0;
   width: 200px;
-  background: white;
+  background: var(--panel-bg);
   border-radius: 12px;
   padding: 16px;
   z-index: 300;
-  border: 1px solid rgba(0,0,0,0.08);
+  border: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -862,7 +971,7 @@ watch(activeThemeConfig, () => {
 
 .setting-options {
   display: flex;
-  background: #f3f4f6;
+  background: var(--hover-bg);
   padding: 3px;
   border-radius: 8px;
 }
@@ -875,19 +984,19 @@ watch(activeThemeConfig, () => {
   font-size: 0.85rem;
   cursor: pointer;
   border-radius: 6px;
-  color: #6b7280;
+  color: var(--secondary-text);
   transition: all 0.2s;
 }
 
 .option-btn.active {
-  background: white;
+  background: var(--panel-bg);
   color: var(--primary-color);
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .settings-separator {
   height: 1px;
-  background: #f3f4f6;
+  background: var(--border-color);
   margin: 4px 0;
 }
 
@@ -902,7 +1011,8 @@ watch(activeThemeConfig, () => {
   align-items: center;
   gap: 8px;
   font-size: 0.85rem;
-  color: #4b5563;
+  color: var(--text-color);
+  opacity: 0.8;
 }
 
 .about-icon {
@@ -911,7 +1021,7 @@ watch(activeThemeConfig, () => {
 }
 
 .about-item a {
-  color: #4b5563;
+  color: var(--text-color);
   text-decoration: none;
   transition: color 0.2s;
 }
@@ -921,7 +1031,7 @@ watch(activeThemeConfig, () => {
 }
 
 .icon-btn.active {
-  background-color: rgba(0,0,0,0.05);
+  background-color: var(--hover-bg);
   border-color: var(--primary-color);
   color: var(--primary-color);
 }
@@ -975,23 +1085,25 @@ watch(activeThemeConfig, () => {
 }
 
 .day-cell:hover {
-  background-color: rgba(0,0,0,0.02);
+  background-color: var(--hover-bg);
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(0,0,0,0.05);
 }
 
 .day-cell.selected {
   border-color: var(--primary-color);
-  background-color: rgba(0,0,0,0.01);
+  background-color: var(--hover-bg);
 }
 
 .day-cell.today {
   background-color: var(--primary-color);
+  box-shadow: 0 4px 12px var(--primary-color);
+  z-index: 1;
 }
 
 .day-cell.today .solar-day,
 .day-cell.today .lunar-day {
-  color: white !important;
+  color: #ffffff !important;
 }
 
 .day-cell.other-month {
@@ -1010,7 +1122,7 @@ watch(activeThemeConfig, () => {
 
 .lunar-day {
   font-size: 0.75rem;
-  color: #666;
+  color: var(--secondary-text);
 }
 
 .lunar-day.festival {
@@ -1040,8 +1152,8 @@ watch(activeThemeConfig, () => {
 
 .almanac-panel {
   width: 280px;
-  background-color: var(--cell-bg);
-  border-left: 1px solid rgba(0,0,0,0.05);
+  background-color: var(--panel-bg);
+  border-left: 1px solid var(--border-color);
   padding: 24px;
   display: flex;
   flex-direction: column;
@@ -1073,11 +1185,12 @@ watch(activeThemeConfig, () => {
 .solar-full {
   font-weight: 600;
   font-size: 0.9rem;
+  color: var(--text-color);
 }
 
 .lunar-full {
   font-size: 0.85rem;
-  color: #666;
+  color: var(--secondary-text);
 }
 
 .yi-ji {
@@ -1092,14 +1205,14 @@ watch(activeThemeConfig, () => {
   gap: 12px;
 }
 
-.yi-ji .label {
+.yi-ji .label { 
   width: 32px;
   height: 32px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: #ffffff;
   flex-shrink: 0;
   font-weight: 600;
 }
@@ -1110,7 +1223,7 @@ watch(activeThemeConfig, () => {
 .yi-ji .content {
   font-size: 0.9rem;
   line-height: 1.5;
-  color: #4b5563;
+  color: var(--text-color);
 }
 
 .other-details {
@@ -1118,7 +1231,7 @@ watch(activeThemeConfig, () => {
   flex-direction: column;
   gap: 8px;
   font-size: 0.85rem;
-  color: #666;
+  color: var(--secondary-text);
 }
 
 .detail-row {
