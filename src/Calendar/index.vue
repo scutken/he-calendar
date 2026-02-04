@@ -14,8 +14,24 @@ const showYearPicker = ref(false);
 const showMonthPicker = ref(false);
 const showThemePicker = ref(false);
 const showSettings = ref(false);
-const colorMode = ref(localStorage.getItem('calendar-color-mode') || 'auto'); // light, dark, auto
-const weekStartDay = ref(parseInt(localStorage.getItem('calendar-week-start') || '0'));
+// 统一的存储工具函数，优先使用 uTools dbStorage，降级到 localStorage
+const getStorageItem = (key, defaultValue) => {
+  if (window.utools && window.utools.dbStorage) {
+    const value = window.utools.dbStorage.getItem(key);
+    return value !== undefined && value !== null ? value : defaultValue;
+  }
+  return localStorage.getItem(key) || defaultValue;
+};
+
+const setStorageItem = (key, value) => {
+  if (window.utools && window.utools.dbStorage) {
+    window.utools.dbStorage.setItem(key, value);
+  }
+  localStorage.setItem(key, value);
+};
+
+const colorMode = ref(getStorageItem('calendar-color-mode', 'auto')); // light, dark, auto
+const weekStartDay = ref(parseInt(getStorageItem('calendar-week-start', '0')));
 const previewTheme = ref(null);
 const yearPickerOffset = ref(0); // 年份选择器的偏移量
 
@@ -146,7 +162,7 @@ const savedThemeConfig = computed(() => {
 
 const switchTheme = (themeId) => {
   currentTheme.value = themeId;
-  localStorage.setItem('calendar-theme', themeId);
+  setStorageItem('calendar-theme', themeId);
   applyTheme();
   showThemePicker.value = false; // 选中后隐藏选择列表
 };
@@ -187,7 +203,7 @@ const applyTheme = () => {
 
 const switchColorMode = (mode) => {
   colorMode.value = mode;
-  localStorage.setItem('calendar-color-mode', mode);
+  setStorageItem('calendar-color-mode', mode);
   applyTheme();
 };
 
@@ -283,7 +299,7 @@ const toggleMonthPicker = () => {
 
 const setWeekStartDay = (day) => {
   weekStartDay.value = day;
-  localStorage.setItem('calendar-week-start', day);
+  setStorageItem('calendar-week-start', day.toString());
 };
 
 const toggleSettings = () => {
@@ -407,7 +423,7 @@ watch([isDarkMode, activeThemeConfig], () => {
 }, { deep: true });
 
 onMounted(() => {
-  const savedTheme = localStorage.getItem('calendar-theme') || 'auto';
+  const savedTheme = getStorageItem('calendar-theme', 'auto');
   currentTheme.value = savedTheme;
   applyTheme();
   
