@@ -329,6 +329,17 @@ const closePickers = () => {
   yearPickerOffset.value = 0;
 };
 
+// 打开外部链接的统一方法
+const openExternalLink = (url) => {
+  if (window.utools && window.utools.shellOpenExternal) {
+    // uTools 环境下使用 shellOpenExternal API
+    window.utools.shellOpenExternal(url);
+  } else {
+    // Web 环境下使用普通的 window.open
+    window.open(url, '_blank');
+  }
+};
+
 const selectDate = (day) => {
   selectedDate.value = day.date;
 };
@@ -576,13 +587,13 @@ watch(activeThemeConfig, () => {
                 <span class="version-badge">v{{ projectConfig.version }}</span>
               </div>
               <div class="about-info">
-                <div class="about-item">
+                <div class="about-item link-item" @click="openExternalLink(projectConfig.github)">
                   <Github :size="14" class="about-icon" />
-                  <a :href="projectConfig.github" target="_blank">GitHub 源码</a>
+                  <span class="link-text">GitHub 源码</span>
                 </div>
-                <div class="about-item">
+                <div class="about-item link-item" @click="openExternalLink(projectConfig.website)">
                   <ExternalLink :size="14" class="about-icon" />
-                  <a :href="projectConfig.website" target="_blank">网页版地址</a>
+                  <span class="link-text">网页版地址</span>
                 </div>
                 <div class="about-item">
                   <User :size="14" class="about-icon" />
@@ -1036,14 +1047,22 @@ watch(activeThemeConfig, () => {
   opacity: 0.8;
 }
 
-.about-item a {
-  color: var(--text-color);
-  text-decoration: none;
-  transition: color 0.2s;
+.about-item.link-item {
+  cursor: pointer;
+  transition: opacity 0.2s;
 }
 
-.about-item a:hover {
+.about-item.link-item:hover {
+  opacity: 0.8;
+}
+
+.about-item.link-item:hover .link-text {
   color: var(--primary-color);
+  text-decoration: underline;
+}
+
+.link-text {
+  transition: color 0.2s;
 }
 
 .icon-btn.active {
