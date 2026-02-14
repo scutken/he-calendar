@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import dayjs from 'dayjs';
-import { Solar, Lunar, HolidayUtil } from 'lunar-javascript';
+import { SolarDay, LunarDay, SolarTerm, LegalHoliday, SolarFestival, LunarFestival, Taboo, PengZu, FetusDay } from 'tyme4ts';
 import { ChevronLeft, ChevronRight, Palette, Settings, Github, ExternalLink, User, Sun, Moon, Monitor } from 'lucide-vue-next';
 import { projectConfig } from '../config';
 
@@ -35,22 +35,17 @@ const weekStartDay = ref(parseInt(getStorageItem('calendar-week-start', '0')));
 const previewTheme = ref(null);
 const yearPickerOffset = ref(0); // 年份选择器的偏移量
 
-// 节假日显示开关
-const showChineseFestivals = ref(getStorageItem('calendar-show-chinese-festivals', 'true') === 'true');
-const showWesternFestivals = ref(getStorageItem('calendar-show-western-festivals', 'true') === 'true');
-const showSolarTerms = ref(getStorageItem('calendar-show-solar-terms', 'true') === 'true');
+// 节假日显示开关（四大分类，法定假日始终显示）
+const showSolarFestivals = ref(getStorageItem('calendar-show-solar-festivals', 'true') === 'true'); // 公历现代节日
+const showLunarFestivals = ref(getStorageItem('calendar-show-lunar-festivals', 'true') === 'true'); // 农历传统节日
+const showInternationalFestivals = ref(getStorageItem('calendar-show-international-festivals', 'true') === 'true'); // 国际节日
+const showSolarTerms = ref(getStorageItem('calendar-show-solar-terms', 'true') === 'true'); // 二十四节气
+const showFestivalPanel = ref(false); // 节日配置面板展开状态
 
-// 西方节日数据（公历）
-const westernFestivals = {
-  '1-1': '元旦',
+// 国际节日数据（公历）- tyme4ts不包含这些，需手动定义
+const internationalFestivals = {
   '2-14': '情人节',
-  '3-8': '妇女节',
-  '3-12': '植树节',
   '4-1': '愚人节',
-  '4-22': '地球日',
-  '5-1': '劳动节',
-  '5-4': '青年节',
-  '6-1': '儿童节',
   '10-31': '万圣节',
   '11-11': '光棍节',
   '12-24': '平安夜',
@@ -58,7 +53,7 @@ const westernFestivals = {
 };
 
 // 动态计算的西方节日（如母亲节、父亲节、感恩节）
-const getDynamicWesternFestival = (year, month, day) => {
+const getDynamicInternationalFestival = (year, month, day) => {
   // 母亲节：5月第二个星期日
   if (month === 5) {
     const firstDay = new Date(year, 4, 1).getDay();
@@ -80,12 +75,22 @@ const getDynamicWesternFestival = (year, month, day) => {
   return null;
 };
 
-// 获取西方节日
-const getWesternFestival = (year, month, day) => {
+// 获取国际节日
+const getInternationalFestival = (year, month, day) => {
   const key = `${month}-${day}`;
-  if (westernFestivals[key]) return westernFestivals[key];
-  return getDynamicWesternFestival(year, month, day);
+  if (internationalFestivals[key]) return internationalFestivals[key];
+  return getDynamicInternationalFestival(year, month, day);
 };
+
+// 计算已选节日类型数量（不含法定假日，法定假日始终显示）
+const selectedFestivalCount = computed(() => {
+  let count = 0;
+  if (showSolarFestivals.value) count++;
+  if (showLunarFestivals.value) count++;
+  if (showInternationalFestivals.value) count++;
+  if (showSolarTerms.value) count++;
+  return count;
+});
 
 // 24节气主题配色（基于中国传统色）
 const solarTermThemes = {
@@ -152,12 +157,18 @@ const themes = [
   { id: 'cyan', name: '黛蓝', color: '#1e40af' },
 ];
 
-// 获取当前节气
+// 获取当前节气（使用 tyme4ts）
 const getCurrentSolarTerm = () => {
-  const solar = Solar.fromDate(new Date());
-  const lunar = solar.getLunar();
-  const term = lunar.getPrevJieQi(true); // 获取上一节气（包含当天）
-  return term ? term.getName() : '立春';
+  const now = new Date();
+  const solarDay = SolarDay.fromYmd(now.getFullYear(), now.getMonth() + 1, now.getDate());
+  // 获取当天的节气（如果有）
+  const term = solarDay.getTerm();
+  if (term) {
+    return term.getName();
+  }
+  // 获取上一个节气
+  const termDay = solarDay.getTermDay();
+  return termDay.getSolarTerm().getName();
 };
 
 // 获取当前节气对应的动态主题名称
@@ -273,39 +284,65 @@ const calendarDays = computed(() => {
   // Create 6 weeks (42 days)
   for (let i = 0; i < 42; i++) {
     const date = start.add(i, 'day');
-    const solar = Solar.fromYmd(date.year(), date.month() + 1, date.date());
-    const lunar = solar.getLunar();
     
-    // Get holiday info
-    const holiday = HolidayUtil.getHoliday(date.year(), date.month() + 1, date.date());
+    // 使用 tyme4ts API
+    const solarDay = SolarDay.fromYmd(date.year(), date.month() + 1, date.date());
+    const lunarDay = solarDay.getLunarDay();
     
-    // Get solar term (节气)
-    const jieQi = lunar.getJieQi();
+    // 法定假日（始终获取，用于显示休/班标记）
+    const legalHoliday = solarDay.getLegalHoliday();
     
-    // 获取中国传统节日
-    const chineseFestivals = showChineseFestivals.value ? [...lunar.getFestivals(), ...lunar.getOtherFestivals()] : [];
+    // 公历现代节日
+    const solarFestival = showSolarFestivals.value ? solarDay.getFestival() : null;
     
-    // 获取西方节日
-    const westernFestival = showWesternFestivals.value ? getWesternFestival(date.year(), date.month() + 1, date.date()) : null;
+    // 农历传统节日
+    const lunarFestival = showLunarFestivals.value ? lunarDay.getFestival() : null;
     
-    // 合并所有节日
-    const allFestivals = [...chineseFestivals];
-    if (westernFestival) allFestivals.push(westernFestival);
+    // 国际节日
+    const internationalFestival = showInternationalFestivals.value ? getInternationalFestival(date.year(), date.month() + 1, date.date()) : null;
     
-    // 节气（根据开关控制）
-    const displaySolarTerm = showSolarTerms.value ? (jieQi || '') : '';
+    // 节气（只在节气日当天显示）
+    const termDay = solarDay.getTermDay();
+    const isTermDay = termDay.getDayIndex() === 0; // 第0天表示正好是节气日
+    const solarTermName = isTermDay ? termDay.getSolarTerm().getName() : '';
+    const displaySolarTerm = showSolarTerms.value ? solarTermName : '';
+    
+    // 合并所有节日用于详情显示
+    const allFestivalsForDetail = [];
+    if (lunarFestival) allFestivalsForDetail.push({ name: lunarFestival.getName(), type: 'lunar' });
+    if (solarFestival) allFestivalsForDetail.push({ name: solarFestival.getName(), type: 'solar' });
+    if (solarTermName) allFestivalsForDetail.push({ name: solarTermName, type: 'term' });
+    if (internationalFestival) allFestivalsForDetail.push({ name: internationalFestival, type: 'international' });
+    
+    // 日历格子显示优先级：农历传统节日 > 公历现代节日 > 节气 > 国际节日
+    let displayFestival = '';
+    if (showLunarFestivals.value && lunarFestival) {
+      displayFestival = lunarFestival.getName();
+    } else if (showSolarFestivals.value && solarFestival) {
+      displayFestival = solarFestival.getName();
+    } else if (showSolarTerms.value && solarTermName) {
+      displayFestival = solarTermName;
+    } else if (showInternationalFestivals.value && internationalFestival) {
+      displayFestival = internationalFestival;
+    }
+    
+    // 获取农历月和日的中文名称
+    const lunarMonth = lunarDay.getLunarMonth();
+    const lunarDayName = lunarDay.getName(); // 如 "初一"、"十五"
+    const lunarMonthName = lunarMonth.getName(); // 如 "正月"、"二月"
+    const lunarText = lunarDayName === '初一' ? lunarMonthName : lunarDayName;
     
     days.push({
       date,
-      solar,
-      lunar,
+      solarDay,
+      lunarDay,
       isCurrentMonth: date.month() === currentMonth.value.month(),
       isToday: date.isSame(dayjs(), 'day'),
       isSelected: date.isSame(selectedDate.value, 'day'),
-      lunarText: lunar.getDayInChinese() === '初一' ? lunar.getMonthInChinese() + '月' : lunar.getDayInChinese(),
-      festivals: allFestivals,
-      solarTerm: displaySolarTerm,
-      holiday: holiday ? { name: holiday.getName(), isWork: holiday.isWork() } : null,
+      lunarText: lunarText,
+      displayFestival: displayFestival, // 日历格子显示的节日（按优先级）
+      allFestivals: allFestivalsForDetail, // 所有节日（用于详情显示）
+      holiday: legalHoliday ? { name: legalHoliday.getName(), isWork: legalHoliday.isWork() } : null,
     });
   }
   return days;
@@ -368,14 +405,23 @@ const setWeekStartDay = (day) => {
 };
 
 // 节假日显示开关控制
-const toggleChineseFestivals = () => {
-  showChineseFestivals.value = !showChineseFestivals.value;
-  setStorageItem('calendar-show-chinese-festivals', showChineseFestivals.value.toString());
+const toggleSolarFestivals = () => {
+  showSolarFestivals.value = !showSolarFestivals.value;
+  setStorageItem('calendar-show-solar-festivals', showSolarFestivals.value.toString());
 };
 
-const toggleWesternFestivals = () => {
-  showWesternFestivals.value = !showWesternFestivals.value;
-  setStorageItem('calendar-show-western-festivals', showWesternFestivals.value.toString());
+const toggleLunarFestivals = () => {
+  showLunarFestivals.value = !showLunarFestivals.value;
+  setStorageItem('calendar-show-lunar-festivals', showLunarFestivals.value.toString());
+};
+
+const toggleInternationalFestivals = () => {
+  showInternationalFestivals.value = !showInternationalFestivals.value;
+  setStorageItem('calendar-show-international-festivals', showInternationalFestivals.value.toString());
+};
+
+const toggleFestivalPanel = () => {
+  showFestivalPanel.value = !showFestivalPanel.value;
 };
 
 const toggleSolarTerms = () => {
@@ -476,27 +522,69 @@ const handleScroll = (e) => {
 
 const almanacInfo = computed(() => {
   const date = selectedDate.value;
-  const solar = Solar.fromYmd(date.year(), date.month() + 1, date.date());
-  const lunar = solar.getLunar();
+  const solarDay = SolarDay.fromYmd(date.year(), date.month() + 1, date.date());
+  const lunarDay = solarDay.getLunarDay();
+  const lunarMonth = lunarDay.getLunarMonth();
+  const lunarYear = lunarMonth.getLunarYear();
+  
+  // 获取干支信息
+  const yearSixtyCycle = lunarDay.getYearSixtyCycle();
+  const monthSixtyCycle = lunarDay.getMonthSixtyCycle();
+  const daySixtyCycle = lunarDay.getSixtyCycle();
   
   // 获取彭祖百忌
-  const pengZu = lunar.getPengZuGan() + ' ' + lunar.getPengZuZhi();
+  const pengZu = PengZu.fromSixtyCycle(daySixtyCycle);
+  const pengZuText = pengZu.getPengZuHeavenStem().getName() + ' ' + pengZu.getPengZuEarthBranch().getName();
+  
+  // 获取胎神方位
+  const fetusDay = FetusDay.fromLunarDay(lunarDay);
+  const fetusText = fetusDay.getName();
+  
+  // 获取冲煎信息
+  const dayEarthBranch = daySixtyCycle.getEarthBranch();
+  const chongEarthBranch = dayEarthBranch.getOpposite();
+  const sha = dayEarthBranch.getOminous();
+  
+  // 获取宜忌
+  const recommends = lunarDay.getRecommends();
+  const avoids = lunarDay.getAvoids();
+  
+  // 获取上一个和下一个节气
+  const termDay = solarDay.getTermDay();
+  const currentTerm = termDay.getSolarTerm();
+  const nextTerm = currentTerm.next(1);
   
   return {
     solarDate: date.format('YYYY年MM月DD日'),
     weekDay: '星期' + baseWeekDays[date.day()],
-    lunarDate: `${lunar.getYearInGanZhi()}(${lunar.getYearShengXiao()})年 ${lunar.getMonthInChinese()}月${lunar.getDayInChinese()}`,
-    ganZhi: `${lunar.getYearInGanZhi()}年 ${lunar.getMonthInGanZhi()}月 ${lunar.getDayInGanZhi()}日`,
-    yi: lunar.getDayYi(),
-    ji: lunar.getDayJi(),
-    pengZu: pengZu,
-    wuXing: lunar.getDayNaYin(), // 五行纳音
-    chong: lunar.getDayChongDesc(),
-    sha: lunar.getDaySha(),
-    taiShen: lunar.getDayPositionTai(), // 胎神方位
-    jieQi: lunar.getPrevJieQi().getName() + ' ' + lunar.getNextJieQi().getName(),
+    lunarDate: `${yearSixtyCycle.getName()}(${lunarYear.getSixtyCycle().getEarthBranch().getZodiac().getName()})年 ${lunarMonth.getName()}${lunarDay.getName()}`,
+    ganZhi: `${yearSixtyCycle.getName()}年 ${monthSixtyCycle.getName()}月 ${daySixtyCycle.getName()}日`,
+    yi: recommends.map(t => t.getName()),
+    ji: avoids.map(t => t.getName()),
+    pengZu: pengZuText,
+    wuXing: daySixtyCycle.getSound().getName(), // 五行纳音
+    chong: `冲${chongEarthBranch.getZodiac().getName()}`,
+    sha: sha.getName(),
+    taiShen: fetusText, // 胎神方位
+    jieQi: currentTerm.getName() + ' ' + nextTerm.getName(),
   };
 });
+
+// 获取选中日期的所有节日信息
+const selectedDayFestivals = computed(() => {
+  const day = calendarDays.value.find(d => d.isSelected);
+  return day ? day.allFestivals : [];
+});
+
+// 打开百度百科
+const openBaikeLink = (festivalName) => {
+  const url = `https://baike.baidu.com/item/${encodeURIComponent(festivalName)}`;
+  if (window.utools && window.utools.shellOpenExternal) {
+    window.utools.shellOpenExternal(url);
+  } else {
+    window.open(url, '_blank');
+  }
+};
 
 // 全局点击监听，用于关闭弹出菜单
 const handleGlobalClick = (e) => {
@@ -663,20 +751,32 @@ watch(activeThemeConfig, () => {
             <div class="settings-separator"></div>
             
             <div class="settings-section">
-              <div class="section-title">节日显示</div>
-              <div class="festival-toggles">
-                <label class="toggle-item">
-                  <input type="checkbox" :checked="showChineseFestivals" @change="toggleChineseFestivals" />
-                  <span class="toggle-label">中国节日</span>
-                </label>
-                <label class="toggle-item">
-                  <input type="checkbox" :checked="showWesternFestivals" @change="toggleWesternFestivals" />
-                  <span class="toggle-label">西方节日</span>
-                </label>
-                <label class="toggle-item">
-                  <input type="checkbox" :checked="showSolarTerms" @change="toggleSolarTerms" />
-                  <span class="toggle-label">二十四节气</span>
-                </label>
+              <div class="section-title festival-header" @click="toggleFestivalPanel">
+                <span>节日显示</span>
+                <span class="festival-count">{{ selectedFestivalCount }}/4</span>
+                <span class="expand-icon">{{ showFestivalPanel ? '▲' : '▼' }}</span>
+              </div>
+              <div v-if="showFestivalPanel" class="festival-tags">
+                <span 
+                  class="festival-tag" 
+                  :class="{ active: showLunarFestivals }" 
+                  @click="toggleLunarFestivals"
+                >农历</span>
+                <span 
+                  class="festival-tag" 
+                  :class="{ active: showSolarFestivals }" 
+                  @click="toggleSolarFestivals"
+                >公历</span>
+                <span 
+                  class="festival-tag" 
+                  :class="{ active: showSolarTerms }" 
+                  @click="toggleSolarTerms"
+                >节气</span>
+                <span 
+                  class="festival-tag" 
+                  :class="{ active: showInternationalFestivals }" 
+                  @click="toggleInternationalFestivals"
+                >国际</span>
               </div>
             </div>
             
@@ -731,8 +831,8 @@ watch(activeThemeConfig, () => {
             @click="selectDate(day)"
           >
             <div class="solar-day">{{ day.date.date() }}</div>
-            <div class="lunar-day" :class="{ 'festival': day.festivals.length > 0 || day.solarTerm }">
-              {{ day.solarTerm || (day.festivals.length > 0 ? day.festivals[0] : day.lunarText) }}
+            <div class="lunar-day" :class="{ 'festival': day.displayFestival }">
+              {{ day.displayFestival || day.lunarText }}
             </div>
             <div v-if="day.holiday" class="holiday-tag" :class="day.holiday.isWork ? 'work' : 'rest'">
               {{ day.holiday.isWork ? '班' : '休' }}
@@ -748,6 +848,22 @@ watch(activeThemeConfig, () => {
           <div class="detail-info">
             <div class="solar-full">{{ almanacInfo.solarDate }}</div>
             <div class="lunar-full">{{ almanacInfo.lunarDate }}</div>
+          </div>
+        </div>
+        
+        <!-- 节日显示区域 -->
+        <div v-if="selectedDayFestivals.length > 0" class="festival-section">
+          <div class="festival-list">
+            <span 
+              v-for="(festival, index) in selectedDayFestivals" 
+              :key="index"
+              class="festival-item"
+              :class="'festival-' + festival.type"
+              @click="openBaikeLink(festival.name)"
+              :title="'点击查看' + festival.name + '百科'"
+            >
+              {{ festival.name }}
+            </span>
           </div>
         </div>
         
@@ -1381,30 +1497,101 @@ watch(activeThemeConfig, () => {
   min-width: 32px;
 }
 
-/* 节日显示开关 */
-.festival-toggles {
+/* 节日显示标签式开关 */
+.festival-header {
+  cursor: pointer;
+  user-select: none;
+}
+
+.festival-count {
+  font-size: 0.7rem;
+  padding: 1px 6px;
+  background: var(--hover-bg);
+  border-radius: 10px;
+  color: var(--accent-color);
+  margin-left: auto;
+}
+
+.expand-icon {
+  font-size: 0.6rem;
+  color: var(--secondary-text);
+  margin-left: 6px;
+}
+
+.festival-tags {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.festival-tag {
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--hover-bg);
+  color: var(--secondary-text);
+  border: 1px solid transparent;
+}
+
+.festival-tag:hover {
+  border-color: var(--primary-color);
+}
+
+.festival-tag.active {
+  background: var(--primary-color);
+  color: #ffffff;
+}
+
+/* 黄历详情中的节日显示 */
+.festival-section {
+  padding: 12px 0;
+  border-bottom: 1px dashed var(--border-color);
+}
+
+.festival-list {
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
-.toggle-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  padding: 4px 0;
-}
-
-.toggle-item input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--primary-color);
-  cursor: pointer;
-}
-
-.toggle-label {
+.festival-item {
+  padding: 4px 12px;
   font-size: 0.85rem;
-  color: var(--text-color);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid;
+}
+
+.festival-item:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.festival-lunar {
+  background: #fef3c7;
+  color: #b45309;
+  border-color: #fbbf24;
+}
+
+.festival-solar {
+  background: #dbeafe;
+  color: #1e40af;
+  border-color: #60a5fa;
+}
+
+.festival-term {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #4ade80;
+}
+
+.festival-international {
+  background: #fce7f3;
+  color: #9d174d;
+  border-color: #f472b6;
 }
 </style>
