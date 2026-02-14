@@ -179,12 +179,19 @@ const dynamicThemeName = computed(() => {
 });
 
 // 判断当前是否处于深色模式
+const systemDarkMode = ref(false);
+
 const isDarkMode = computed(() => {
   if (colorMode.value === 'auto') {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    return systemDarkMode.value;
   }
   return colorMode.value === 'dark';
 });
+
+// 检测系统深色模式（使用 web 原生方式，uTools 官方推荐）
+const detectSystemDarkMode = () => {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+};
 
 // 获取指定主题的配置
 const getThemeConfigById = (themeId) => {
@@ -605,6 +612,9 @@ watch([isDarkMode, activeThemeConfig], () => {
 onMounted(() => {
   const savedTheme = getStorageItem('calendar-theme', 'auto');
   currentTheme.value = savedTheme;
+  
+  // 初始化系统深色模式检测
+  systemDarkMode.value = detectSystemDarkMode();
   applyTheme();
   
   if (props.enterAction && props.enterAction.code === 'calendar') {
@@ -614,9 +624,10 @@ onMounted(() => {
   // 网页版添加全局点击监听
   window.addEventListener('click', handleGlobalClick);
   
-  // 监听系统主题变化
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  // 监听系统主题变化（web 原生方式，uTools 官方推荐）
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
     if (colorMode.value === 'auto') {
+      systemDarkMode.value = e.matches;
       applyTheme();
     }
   });
