@@ -3,4 +3,5 @@ const path = require('node:path')
 
 // 通过 window 对象向渲染进程注入 nodejs 能力
 window.services = {
+  // 预留的 API 接口，按需添加
 }
