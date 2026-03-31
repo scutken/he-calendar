@@ -642,46 +642,76 @@ const selectDate = (day) => {
 });
 
 let lastScrollTime = 0;
+let monthWheelAccumulator = 0;
+let lastWheelTime = 0;
+let lastMonthChangeTime = 0;
+
 const handleScroll = (e) => {
   const now = Date.now();
-  if (now - lastScrollTime < 300) return; // 300ms throttle
-  
-  if (Math.abs(e.deltaY) < 10) return; // Ignore small movements
-  
+
   // 如果节日倒数面板打开，不处理滚轮（让面板自己滚动）
   if (showFestivalList.value) {
     return;
   }
-  
-  // 如果年份选择器打开，滚轮切换年份页面
+
+  // 如果年份选择器打开，滚轮切换年份页面（保留原有节流）
   if (showYearPicker.value) {
-    const currentYear = currentMonth.value.year();
+    if (now - lastScrollTime < 300) return;
+    if (Math.abs(e.deltaY) < 10) return;
+
     const direction = e.deltaY > 0 ? 1 : -1;
     const newOffset = yearPickerOffset.value + direction * 6; // 每次翻6个年份（半页）
-    
+
     // 限制范围：前100年到后20年
     const minOffset = 0;
     const maxOffset = 121 - 12; // 121个年份 - 12个可见 = 109
-    
+
     if (newOffset >= minOffset && newOffset <= maxOffset) {
       yearPickerOffset.value = newOffset;
     }
     lastScrollTime = now;
     return;
   }
-  
+
   // 如果月份选择器打开，不处理滚轮
   if (showMonthPicker.value) {
     return;
   }
-  
-  // 默认情况，滚轮切换月份
-  if (e.deltaY > 0) {
+
+  // 默认情况：滚轮切换月份
+  // 采用「累加器 + 触发后固定冷却」双重机制：
+  // - 累加器：归一化鼠标滚轮（大 delta、少事件）与触控板（小 delta、多事件）的差异
+  // - 冷却期：触发月份切换后 500ms 内忽略所有滚轮，
+  //   吃掉触控板惯性滚动，冷却从触发时刻算起，不会被后续事件重置
+
+  // 触发后冷却期内，直接忽略
+  if (now - lastMonthChangeTime < 500) return;
+
+  // 事件间隔较大时重置累加器（新手势从零开始）
+  if (now - lastWheelTime > 200) {
+    monthWheelAccumulator = 0;
+  }
+  lastWheelTime = now;
+
+  // 根据 deltaMode 归一化为像素单位
+  let delta = e.deltaY;
+  if (e.deltaMode === 1) delta *= 40;  // 行模式（Firefox）
+  if (e.deltaMode === 2) delta *= 800; // 页模式
+
+  monthWheelAccumulator += delta;
+
+  // 累加量未达阈值，不触发
+  if (Math.abs(monthWheelAccumulator) < 80) return;
+
+  const direction = monthWheelAccumulator > 0 ? 1 : -1;
+  monthWheelAccumulator = 0;
+  lastMonthChangeTime = now;
+
+  if (direction > 0) {
     nextMonth();
   } else {
     prevMonth();
   }
-  lastScrollTime = now;
 };
 
 const almanacInfo = computed(() => {
