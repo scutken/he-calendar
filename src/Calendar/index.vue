@@ -764,6 +764,60 @@ const almanacInfo = computed(() => {
   };
 });
 
+// ============================================================
+// 十二时辰吉凶
+// ============================================================
+
+const hoveredShichen = ref(-1);
+
+const shichenNames = ['子时', '丑时', '寅时', '卯时', '辰时', '巳时', '午时', '未时', '申时', '酉时', '戌时', '亥时'];
+const shichenTimeRanges = ['23:00-01:00', '01:00-03:00', '03:00-05:00', '05:00-07:00', '07:00-09:00', '09:00-11:00', '11:00-13:00', '13:00-15:00', '15:00-17:00', '17:00-19:00', '19:00-21:00', '21:00-23:00'];
+
+// 黄道十二神（按固定顺序轮转）
+const twelveGods = ['青龙', '明堂', '天刑', '朱雀', '金匮', '天德', '白虎', '玉堂', '天牢', '玄武', '司命', '勾陈'];
+const yellowRoadGods = new Set(['青龙', '明堂', '金匮', '天德', '玉堂', '司命']); // 黄道吉神
+
+// 根据当前小时获取所在时辰索引
+const getCurrentShichenIndex = () => {
+  const h = new Date().getHours();
+  if (h >= 23 || h < 1) return 0; // 子时
+  return Math.floor((h + 1) / 2);
+};
+
+// 计算选中日期的十二时辰吉凶
+const shichenInfo = computed(() => {
+  const date = selectedDate.value;
+  const solarDay = SolarDay.fromYmd(date.year(), date.month() + 1, date.date());
+  const lunarDay = solarDay.getLunarDay();
+  // getHours() 可能返回13项（早子时+晚子时），只取前12个标准时辰
+  const hours = lunarDay.getHours().slice(0, 12);
+
+  // 日支决定黄道十二神起始位置：子午→0, 丑未→1, 寅申→2, 卯酉→3, 辰戌→4, 巳亥→5
+  const dayBranchIndex = lunarDay.getSixtyCycle().getEarthBranch().getIndex();
+  const godStartIndex = dayBranchIndex % 6;
+
+  const isToday = date.isSame(dayjs(), 'day');
+  const currentIdx = isToday ? getCurrentShichenIndex() : -1;
+
+  return hours.map((hour, i) => {
+    const godIndex = (godStartIndex + i) % 12;
+    const god = twelveGods[godIndex];
+    const isYellowRoad = yellowRoadGods.has(god);
+
+    return {
+      name: shichenNames[i],
+      timeRange: shichenTimeRanges[i],
+      ganZhi: hour.getSixtyCycle().getName(),
+      god,
+      luck: isYellowRoad ? '吉' : '凶',
+      isYellowRoad,
+      isCurrent: i === currentIdx,
+      recommends: hour.getRecommends().map(r => r.getName()),
+      avoids: hour.getAvoids().map(a => a.getName()),
+    };
+  });
+});
+
 // 获取选中日期的所有节日信息
 const selectedDayFestivals = computed(() => {
   const day = calendarDays.value.find(d => d.isSelected);
@@ -1387,6 +1441,41 @@ watch(activeThemeConfig, () => {
             <div class="detail-row"><span class="label">冲煞</span> {{ almanacInfo.chong }} (煞{{ almanacInfo.sha }})</div>
             <div class="detail-row"><span class="label">彭祖</span> {{ almanacInfo.pengZu }}</div>
             <div class="detail-row"><span class="label">胎神</span> {{ almanacInfo.taiShen }}</div>
+          </div>
+          
+          <!-- 十二时辰吉凶 -->
+          <div class="shichen-section">
+            <div class="shichen-compact">
+              <span 
+                v-for="(sc, idx) in shichenInfo" 
+                :key="sc.name" 
+                class="shichen-tag"
+                :class="{ 'is-ji': sc.isYellowRoad, 'is-xiong': !sc.isYellowRoad, 'is-current': sc.isCurrent, 'is-active': hoveredShichen === idx }"
+                @mouseenter="hoveredShichen = idx"
+                @mouseleave="hoveredShichen = -1"
+              >{{ sc.name[0] }}{{ sc.luck }}</span>
+            </div>
+            <transition name="shichen-detail-fade">
+              <div v-if="hoveredShichen >= 0" class="shichen-detail" :key="hoveredShichen">
+                <div class="shichen-detail-header">
+                  <span class="shichen-detail-name">{{ shichenInfo[hoveredShichen].name }}</span>
+                  <span class="shichen-detail-time">{{ shichenInfo[hoveredShichen].timeRange }}</span>
+                  <span class="shichen-detail-luck" :class="{ 'is-ji': shichenInfo[hoveredShichen].isYellowRoad, 'is-xiong': !shichenInfo[hoveredShichen].isYellowRoad }">{{ shichenInfo[hoveredShichen].isYellowRoad ? '黄道' : '黑道' }}</span>
+                </div>
+                <div class="shichen-detail-body">
+                  <span class="shichen-detail-item"><span class="shichen-detail-label">干支</span>{{ shichenInfo[hoveredShichen].ganZhi }}</span>
+                  <span class="shichen-detail-item"><span class="shichen-detail-label">神煞</span>{{ shichenInfo[hoveredShichen].god }}</span>
+                </div>
+                <div v-if="shichenInfo[hoveredShichen].recommends.length" class="shichen-detail-row is-yi">
+                  <span class="shichen-detail-label">宜</span>
+                  <span>{{ shichenInfo[hoveredShichen].recommends.join(' ') }}</span>
+                </div>
+                <div v-if="shichenInfo[hoveredShichen].avoids.length" class="shichen-detail-row is-ji">
+                  <span class="shichen-detail-label">忌</span>
+                  <span>{{ shichenInfo[hoveredShichen].avoids.join(' ') }}</span>
+                </div>
+              </div>
+            </transition>
           </div>
         </div>
       </aside>
@@ -2024,6 +2113,145 @@ watch(activeThemeConfig, () => {
   color: var(--primary-color);
   font-weight: 600;
   min-width: 32px;
+}
+
+/* 十二时辰吉凶 */
+.shichen-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.shichen-compact {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+}
+
+.shichen-tag {
+  display: block;
+  font-size: 0.75rem;
+  text-align: center;
+  padding: 3px 0;
+  border-radius: 4px;
+  line-height: 1.3;
+  cursor: default;
+  transition: background-color 0.15s ease;
+}
+
+.shichen-tag.is-ji {
+  color: #10b981;
+  background-color: rgba(16, 185, 129, 0.08);
+}
+
+.shichen-tag.is-xiong {
+  color: #ef4444;
+  background-color: rgba(239, 68, 68, 0.08);
+}
+
+.shichen-tag.is-current {
+  font-weight: 700;
+  outline: 1.5px solid var(--primary-color);
+}
+
+.shichen-tag.is-active {
+  font-weight: 700;
+}
+
+.shichen-tag.is-active.is-ji {
+  background-color: rgba(16, 185, 129, 0.18);
+}
+
+.shichen-tag.is-active.is-xiong {
+  background-color: rgba(239, 68, 68, 0.18);
+}
+
+/* 时辰详情面板 */
+.shichen-detail {
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 6px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--text-color, #374151);
+}
+
+.shichen-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+}
+
+.shichen-detail-name {
+  font-weight: 600;
+}
+
+.shichen-detail-time {
+  font-size: 0.72rem;
+  color: var(--secondary-text, #9ca3af);
+}
+
+.shichen-detail-luck {
+  font-size: 0.7rem;
+  padding: 0 5px;
+  border-radius: 3px;
+  margin-left: auto;
+}
+
+.shichen-detail-luck.is-ji {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.shichen-detail-luck.is-xiong {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.shichen-detail-body {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 2px;
+}
+
+.shichen-detail-item {
+  display: flex;
+  gap: 4px;
+}
+
+.shichen-detail-label {
+  color: var(--secondary-text, #9ca3af);
+  flex-shrink: 0;
+}
+
+.shichen-detail-row {
+  display: flex;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.shichen-detail-row.is-yi {
+  color: #10b981;
+}
+
+.shichen-detail-row.is-ji {
+  color: #ef4444;
+}
+
+/* 时辰详情展开动画 */
+.shichen-detail-fade-enter-active,
+.shichen-detail-fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+
+.shichen-detail-fade-enter-from,
+.shichen-detail-fade-leave-to {
+  opacity: 0;
 }
 
 /* 节日显示标签式开关 */
