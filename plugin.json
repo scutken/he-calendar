@@ -20,5 +20,78 @@
         "calendar"
       ]
     }
-  ]
+  ],
+  "tools": {
+    "get_date_info": {
+      "description": "查询指定日期的完整日历信息，包括公历、农历、生肖、干支、节气、节日、法定假日等。不传日期则返回今天的信息。",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "公历日期，格式 YYYY-MM-DD，例如 2026-04-01。不传则默认为今天。"
+          }
+        }
+      }
+    },
+    "get_almanac": {
+      "description": "查询指定日期的黄历信息，包括宜、忌、彭祖百忌、五行纳音、冲煞、胎神方位等传统历法信息。",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "公历日期，格式 YYYY-MM-DD，例如 2026-04-01。不传则默认为今天。"
+          }
+        },
+        "required": []
+      }
+    },
+    "get_festivals": {
+      "description": "查询指定日期范围内的所有节日（含农历传统节日、公历现代节日、国际节日、二十四节气、法定假日）。默认查询从今天起未来30天。",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "start_date": {
+            "type": "string",
+            "description": "起始日期，格式 YYYY-MM-DD。不传则默认为今天。"
+          },
+          "end_date": {
+            "type": "string",
+            "description": "结束日期，格式 YYYY-MM-DD。不传则默认为起始日期后30天。"
+          }
+        }
+      }
+    },
+    "search_next_festival": {
+      "description": "查找下一个指定名称的节日或节气的日期，支持模糊匹配。例如搜索「中秋」「春节」「清明」「冬至」等。从今天起向后搜索最多400天。",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "festival_name": {
+            "type": "string",
+            "description": "节日或节气名称，支持部分匹配，例如「中秋」「春节」「母亲节」「冬至」"
+          }
+        },
+        "required": ["festival_name"]
+      }
+    },
+    "get_shichen": {
+      "description": "查询指定日期的十二时辰吉凶信息，包括每个时辰的干支、黄道十二神、吉凶状态、宜忌事项。黄道吉时为：青龙、明堂、金匮、天德、玉堂、司命；黑道凶时为：天刑、朱雀、白虎、天牢、玄武、勾陈。",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "公历日期，格式 YYYY-MM-DD，例如 2026-04-01。不传则默认为今天。"
+          }
+        }
+      }
+    }
+  }
 }
