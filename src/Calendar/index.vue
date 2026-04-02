@@ -1435,13 +1435,28 @@ watch(activeThemeConfig, () => {
             </div>
           </div>
           
-          <div class="other-details">
-            <div class="detail-row"><span class="label">干支</span> {{ almanacInfo.ganZhi }}</div>
-            <div class="detail-row"><span class="label">五行</span> {{ almanacInfo.wuXing }}</div>
-            <div class="detail-row"><span class="label">冲煞</span> {{ almanacInfo.chong }} (煞{{ almanacInfo.sha }})</div>
-            <div class="detail-row"><span class="label">彭祖</span> {{ almanacInfo.pengZu }}</div>
-            <div class="detail-row"><span class="label">胎神</span> {{ almanacInfo.taiShen }}</div>
-          </div>
+          <dl class="other-details">
+            <div class="detail-card">
+              <dt class="detail-card-label">干支</dt>
+              <dd class="detail-card-value">{{ almanacInfo.ganZhi }}</dd>
+            </div>
+            <div class="detail-card is-compact">
+              <dt class="detail-card-label">五行</dt>
+              <dd class="detail-card-value">{{ almanacInfo.wuXing }}</dd>
+            </div>
+            <div class="detail-card is-highlighted">
+              <dt class="detail-card-label">冲煞</dt>
+              <dd class="detail-card-value">{{ almanacInfo.chong }} (煞{{ almanacInfo.sha }})</dd>
+            </div>
+            <div class="detail-card is-highlighted">
+              <dt class="detail-card-label">彭祖百忌</dt>
+              <dd class="detail-card-value">{{ almanacInfo.pengZu }}</dd>
+            </div>
+            <div class="detail-card is-highlighted">
+              <dt class="detail-card-label">胎神方位</dt>
+              <dd class="detail-card-value">{{ almanacInfo.taiShen }}</dd>
+            </div>
+          </dl>
           
           <!-- 十二时辰吉凶 -->
           <div class="shichen-section">
@@ -2099,20 +2114,43 @@ watch(activeThemeConfig, () => {
 .other-details {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   font-size: 0.85rem;
-  color: var(--secondary-text);
+  margin: 0;
 }
 
-.detail-row {
+.detail-card {
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
-.detail-row .label {
-  color: var(--primary-color);
+.detail-card.is-compact {
+  gap: 4px;
+}
+
+.detail-card.is-highlighted {
+  background: color-mix(in srgb, var(--primary-color) 8%, var(--panel-bg));
+}
+
+.detail-card-label {
+  font-size: 0.72rem;
+  line-height: 1.2;
+  color: var(--secondary-text);
+  letter-spacing: 0.04em;
+}
+
+.detail-card-value {
+  margin: 0;
+  color: var(--text-color);
   font-weight: 600;
-  min-width: 32px;
+  line-height: 1.5;
+  word-break: break-word;
 }
 
 /* 十二时辰吉凶 */
