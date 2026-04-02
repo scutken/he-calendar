@@ -374,6 +374,62 @@ const switchTheme = (themeId) => {
   showThemePicker.value = false; // 选中后隐藏选择列表
 };
 
+const parseColor = (color) => {
+  const value = color.trim();
+
+  if (value.startsWith('#')) {
+    let hex = value.slice(1);
+    if (hex.length === 3) {
+      hex = hex.split('').map(ch => ch + ch).join('');
+    }
+    const int = Number.parseInt(hex, 16);
+    return {
+      r: (int >> 16) & 255,
+      g: (int >> 8) & 255,
+      b: int & 255,
+      a: 1,
+    };
+  }
+
+  const match = value.match(/rgba?\(([^)]+)\)/i);
+  if (match) {
+    const [r, g, b, a = '1'] = match[1].split(',').map(part => part.trim());
+    return {
+      r: Number.parseFloat(r),
+      g: Number.parseFloat(g),
+      b: Number.parseFloat(b),
+      a: Number.parseFloat(a),
+    };
+  }
+
+  if (value === 'transparent') {
+    return { r: 0, g: 0, b: 0, a: 0 };
+  }
+
+  return { r: 0, g: 0, b: 0, a: 1 };
+};
+
+const toRgba = ({ r, g, b, a = 1 }) => `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, ${a.toFixed(3)})`;
+
+const mixColors = (color1, color2, weight = 0.5) => {
+  const c1 = typeof color1 === 'string' ? parseColor(color1) : color1;
+  const c2 = typeof color2 === 'string' ? parseColor(color2) : color2;
+  const w1 = Math.max(0, Math.min(1, weight));
+  const w2 = 1 - w1;
+
+  return toRgba({
+    r: c1.r * w1 + c2.r * w2,
+    g: c1.g * w1 + c2.g * w2,
+    b: c1.b * w1 + c2.b * w2,
+    a: c1.a * w1 + c2.a * w2,
+  });
+};
+
+const withAlpha = (color, alpha) => {
+  const parsed = typeof color === 'string' ? parseColor(color) : color;
+  return toRgba({ ...parsed, a: alpha });
+};
+
 // 应用主题
 const applyTheme = () => {
   const theme = activeThemeConfig.value;
@@ -385,27 +441,57 @@ const applyTheme = () => {
   root.style.setProperty('--bg-color', theme.bgColor);
   root.style.setProperty('--accent-color', theme.accentColor);
   root.style.setProperty('--saved-primary-color', savedTheme.primaryColor);
+
+  let textColor = '#1f2937';
+  let borderColor = 'rgba(0,0,0,0.06)';
+  let hoverBg = 'rgba(0,0,0,0.03)';
+  let panelBg = '#ffffff';
+  let secondaryText = '#6b7280';
   
   // 夜间模式变量
   if (isDark) {
-    root.style.setProperty('--text-color', '#e5e7eb');
+    textColor = '#e5e7eb';
     root.style.setProperty('--header-bg', '#1e1e1e');
     root.style.setProperty('--cell-bg', '#262626');
-    root.style.setProperty('--border-color', 'rgba(255,255,255,0.08)');
-    root.style.setProperty('--hover-bg', 'rgba(255,255,255,0.05)');
-    root.style.setProperty('--panel-bg', '#1e1e1e');
-    root.style.setProperty('--secondary-text', '#9ca3af');
+    borderColor = 'rgba(255,255,255,0.08)';
+    hoverBg = 'rgba(255,255,255,0.05)';
+    panelBg = '#1e1e1e';
+    secondaryText = '#9ca3af';
     root.style.setProperty('--scrollbar-thumb', 'rgba(255,255,255,0.2)');
   } else {
-    root.style.setProperty('--text-color', '#1f2937');
     root.style.setProperty('--header-bg', '#ffffff');
     root.style.setProperty('--cell-bg', '#ffffff');
-    root.style.setProperty('--border-color', 'rgba(0,0,0,0.06)');
-    root.style.setProperty('--hover-bg', 'rgba(0,0,0,0.03)');
-    root.style.setProperty('--panel-bg', '#ffffff');
-    root.style.setProperty('--secondary-text', '#6b7280');
     root.style.setProperty('--scrollbar-thumb', 'rgba(0,0,0,0.1)');
   }
+
+  root.style.setProperty('--text-color', textColor);
+  root.style.setProperty('--border-color', borderColor);
+  root.style.setProperty('--hover-bg', hoverBg);
+  root.style.setProperty('--panel-bg', panelBg);
+  root.style.setProperty('--secondary-text', secondaryText);
+
+  const almanacLine = mixColors(theme.accentColor, borderColor, 0.18);
+  const almanacSoftLine = mixColors(theme.accentColor, borderColor, 0.08);
+
+  root.style.setProperty('--almanac-line', almanacLine);
+  root.style.setProperty('--almanac-soft-line', almanacSoftLine);
+  root.style.setProperty('--almanac-soft-divider', withAlpha(almanacSoftLine, 0.7));
+  root.style.setProperty('--almanac-tint', mixColors(theme.primaryColor, panelBg, 0.04));
+  root.style.setProperty('--almanac-strong-tint', mixColors(theme.accentColor, panelBg, 0.06));
+  root.style.setProperty('--almanac-gold', mixColors(theme.accentColor, textColor, 0.58));
+  root.style.setProperty('--almanac-gold-soft', mixColors(theme.accentColor, secondaryText, 0.32));
+  root.style.setProperty('--almanac-shadow-color', withAlpha(theme.accentColor, 0.025));
+  root.style.setProperty('--almanac-text-shadow-color', withAlpha(theme.accentColor, 0.1));
+  root.style.setProperty('--almanac-board-bg', mixColors(theme.accentColor, panelBg, 0.015));
+  root.style.setProperty('--almanac-ganzhi-bg', withAlpha(theme.accentColor, 0.025));
+  root.style.setProperty('--almanac-shichen-grid', withAlpha(almanacSoftLine, 0.45));
+  root.style.setProperty('--almanac-shichen-ji-bg', mixColors(theme.accentColor, panelBg, 0.08));
+  root.style.setProperty('--almanac-shichen-active-ji-bg', mixColors(theme.accentColor, panelBg, 0.14));
+  root.style.setProperty('--almanac-shichen-current-bg', mixColors(theme.accentColor, panelBg, 0.12));
+  root.style.setProperty('--almanac-shichen-active-xiong-bg', isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)');
+  root.style.setProperty('--almanac-detail-bg', mixColors(theme.accentColor, panelBg, 0.02));
+  root.style.setProperty('--almanac-luck-ji-bg', withAlpha(theme.accentColor, 0.065));
+  root.style.setProperty('--almanac-luck-xiong-bg', withAlpha(theme.accentColor, 0.03));
 };
 
 const switchColorMode = (mode) => {
@@ -1424,6 +1510,7 @@ watch(activeThemeConfig, () => {
         </div>
         
         <div class="almanac-body">
+          <div class="almanac-board">
           <div class="yi-ji">
             <div class="item yi">
               <span class="label">宜</span>
@@ -1436,27 +1523,28 @@ watch(activeThemeConfig, () => {
           </div>
           
           <dl class="other-details">
-            <div class="detail-card">
+            <div class="detail-card detail-card-full detail-card-ganzhi">
               <dt class="detail-card-label">干支</dt>
               <dd class="detail-card-value">{{ almanacInfo.ganZhi }}</dd>
+            </div>
+            <div class="detail-card is-compact">
+              <dt class="detail-card-label">胎神方位</dt>
+              <dd class="detail-card-value">{{ almanacInfo.taiShen }}</dd>
             </div>
             <div class="detail-card is-compact">
               <dt class="detail-card-label">五行</dt>
               <dd class="detail-card-value">{{ almanacInfo.wuXing }}</dd>
             </div>
-            <div class="detail-card is-highlighted">
-              <dt class="detail-card-label">冲煞</dt>
-              <dd class="detail-card-value">{{ almanacInfo.chong }} (煞{{ almanacInfo.sha }})</dd>
-            </div>
-            <div class="detail-card is-highlighted">
+            <div class="detail-card detail-card-full is-highlighted">
               <dt class="detail-card-label">彭祖百忌</dt>
               <dd class="detail-card-value">{{ almanacInfo.pengZu }}</dd>
             </div>
-            <div class="detail-card is-highlighted">
-              <dt class="detail-card-label">胎神方位</dt>
-              <dd class="detail-card-value">{{ almanacInfo.taiShen }}</dd>
+            <div class="detail-card detail-card-full is-highlighted">
+              <dt class="detail-card-label">冲煞</dt>
+              <dd class="detail-card-value">{{ almanacInfo.chong }} (煞{{ almanacInfo.sha }})</dd>
             </div>
           </dl>
+          </div>
           
           <!-- 十二时辰吉凶 -->
           <div class="shichen-section">
@@ -2039,82 +2127,133 @@ watch(activeThemeConfig, () => {
   width: 280px;
   background-color: var(--panel-bg);
   border-left: 1px solid var(--border-color);
-  padding: 24px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  overflow-y: auto;
+  gap: 14px;
+  overflow: hidden;
+  --almanac-shadow: 0 2px 6px var(--almanac-shadow-color);
 }
 
 .almanac-header {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding-bottom: 16px;
-  border-bottom: 2px solid var(--primary-color);
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--almanac-line);
+  position: relative;
 }
 
 .big-day {
-  font-size: 3.5rem;
+  font-size: 3rem;
   font-weight: 700;
   line-height: 1;
-  color: var(--primary-color);
+  color: var(--almanac-gold);
+  text-shadow: 0 2px 12px var(--almanac-text-shadow-color);
 }
 
 .detail-info {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .solar-full {
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: 0.86rem;
   color: var(--text-color);
 }
 
 .lunar-full {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   color: var(--secondary-text);
 }
 
-.yi-ji {
+.almanac-body {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin-bottom: 16px;
+}
+
+.almanac-board {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--almanac-board-bg);
+  box-shadow: var(--almanac-shadow);
+}
+
+.yi-ji {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  margin: 0;
+  border-bottom: 1px solid var(--almanac-soft-divider);
 }
 
 .yi-ji .item {
   display: flex;
-  gap: 12px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px 8px 8px;
+  min-height: 72px;
+  background: transparent;
+}
+
+.yi-ji .item + .item {
+  border-left: 1px solid var(--almanac-soft-divider);
 }
 
 .yi-ji .label { 
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
+  width: auto;
+  height: auto;
+  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #ffffff;
+  color: var(--almanac-gold);
   flex-shrink: 0;
   font-weight: 600;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: 0.74rem;
 }
 
-.yi .label { background-color: #10b981; }
-.ji .label { background-color: #ef4444; }
+.yi .label {
+  color: var(--almanac-gold);
+}
+
+.ji .label {
+  color: var(--secondary-text);
+}
 
 .yi-ji .content {
-  font-size: 0.9rem;
-  line-height: 1.5;
+  font-size: 0.72rem;
+  line-height: 1.32;
+  color: var(--text-color);
+  letter-spacing: 0.01em;
+  writing-mode: horizontal-tb;
+  display: block;
+  max-height: none;
+  overflow: visible;
+  align-self: stretch;
+}
+
+.yi .content {
+  color: var(--almanac-gold);
+}
+
+.ji .content {
   color: var(--text-color);
 }
 
 .other-details {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
   font-size: 0.85rem;
   margin: 0;
 }
@@ -2122,26 +2261,37 @@ watch(activeThemeConfig, () => {
 .detail-card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px;
-  background: var(--panel-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  gap: 3px;
+  justify-content: center;
+  min-height: auto;
+  padding: 6px 9px 7px;
+  background: transparent;
+  border-top: 1px solid var(--almanac-soft-divider);
+  border-right: 1px solid var(--almanac-soft-divider);
 }
 
 .detail-card.is-compact {
-  gap: 4px;
+  min-height: 56px;
 }
 
 .detail-card.is-highlighted {
-  background: color-mix(in srgb, var(--primary-color) 8%, var(--panel-bg));
+  background: transparent;
+  box-shadow: inset 2px 0 0 var(--almanac-gold);
+}
+
+.detail-card-full {
+  grid-column: 1 / -1;
+}
+
+.detail-card-ganzhi {
+  min-height: 50px;
+  background: var(--almanac-ganzhi-bg);
 }
 
 .detail-card-label {
-  font-size: 0.72rem;
+  font-size: 0.64rem;
   line-height: 1.2;
-  color: var(--secondary-text);
+  color: var(--almanac-gold-soft);
   letter-spacing: 0.04em;
 }
 
@@ -2149,47 +2299,54 @@ watch(activeThemeConfig, () => {
   margin: 0;
   color: var(--text-color);
   font-weight: 600;
-  line-height: 1.5;
+  font-size: 0.76rem;
+  line-height: 1.28;
   word-break: break-word;
 }
 
 /* 十二时辰吉凶 */
 .shichen-section {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border-color);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--almanac-board-bg);
 }
 
 .shichen-compact {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
-  gap: 4px;
+  gap: 1px;
+  padding: 1px;
+  background: var(--almanac-shichen-grid);
 }
 
 .shichen-tag {
   display: block;
-  font-size: 0.75rem;
+  font-size: 0.68rem;
   text-align: center;
-  padding: 3px 0;
-  border-radius: 4px;
-  line-height: 1.3;
+  padding: 6px 0 7px;
+  border-radius: 0;
+  line-height: 1.28;
   cursor: default;
-  transition: background-color 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  border: none;
+  background: var(--panel-bg);
 }
 
 .shichen-tag.is-ji {
-  color: #10b981;
-  background-color: rgba(16, 185, 129, 0.08);
+  color: var(--almanac-gold);
+  background-color: var(--almanac-shichen-ji-bg);
 }
 
 .shichen-tag.is-xiong {
-  color: #ef4444;
-  background-color: rgba(239, 68, 68, 0.08);
+  color: var(--text-color);
+  background-color: var(--panel-bg);
 }
 
 .shichen-tag.is-current {
   font-weight: 700;
-  outline: 1.5px solid var(--primary-color);
+  background-color: var(--almanac-shichen-current-bg);
+  outline: 1px solid var(--almanac-gold);
+  outline-offset: -1px;
 }
 
 .shichen-tag.is-active {
@@ -2197,22 +2354,22 @@ watch(activeThemeConfig, () => {
 }
 
 .shichen-tag.is-active.is-ji {
-  background-color: rgba(16, 185, 129, 0.18);
+  background-color: var(--almanac-shichen-active-ji-bg);
 }
 
 .shichen-tag.is-active.is-xiong {
-  background-color: rgba(239, 68, 68, 0.18);
+  background-color: var(--almanac-shichen-active-xiong-bg);
 }
 
 /* 时辰详情面板 */
 .shichen-detail {
-  margin-top: 6px;
-  padding: 8px 10px;
-  background: var(--card-bg, #fff);
-  border: 1px solid var(--border-color, #e5e7eb);
-  border-radius: 6px;
-  font-size: 0.78rem;
-  line-height: 1.5;
+  margin-top: 0;
+  padding: 7px 9px;
+  background: var(--almanac-detail-bg);
+  border-top: 1px solid var(--almanac-soft-divider);
+  border-radius: 0;
+  font-size: 0.74rem;
+  line-height: 1.4;
   color: var(--text-color, #374151);
 }
 
@@ -2222,7 +2379,7 @@ watch(activeThemeConfig, () => {
   gap: 6px;
   margin-bottom: 5px;
   padding-bottom: 4px;
-  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  border-bottom: 1px solid var(--almanac-soft-line);
 }
 
 .shichen-detail-name {
@@ -2242,13 +2399,13 @@ watch(activeThemeConfig, () => {
 }
 
 .shichen-detail-luck.is-ji {
-  color: #10b981;
-  background: rgba(16, 185, 129, 0.1);
+  color: var(--almanac-gold);
+  background: var(--almanac-luck-ji-bg);
 }
 
 .shichen-detail-luck.is-xiong {
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.1);
+  color: var(--text-color);
+  background: var(--almanac-luck-xiong-bg);
 }
 
 .shichen-detail-body {
@@ -2274,11 +2431,11 @@ watch(activeThemeConfig, () => {
 }
 
 .shichen-detail-row.is-yi {
-  color: #10b981;
+  color: var(--almanac-gold);
 }
 
 .shichen-detail-row.is-ji {
-  color: #ef4444;
+  color: var(--text-color);
 }
 
 /* 时辰详情展开动画 */
