@@ -1510,7 +1510,6 @@ watch(activeThemeConfig, () => {
         </div>
         
         <div class="almanac-body">
-          <div class="almanac-board">
           <div class="yi-ji">
             <div class="item yi">
               <span class="label">宜</span>
@@ -1521,29 +1520,30 @@ watch(activeThemeConfig, () => {
               <div class="content">{{ almanacInfo.ji.join(' ') }}</div>
             </div>
           </div>
-          
-          <dl class="other-details">
-            <div class="detail-card detail-card-full detail-card-ganzhi">
-              <dt class="detail-card-label">干支</dt>
-              <dd class="detail-card-value">{{ almanacInfo.ganZhi }}</dd>
-            </div>
-            <div class="detail-card is-compact">
-              <dt class="detail-card-label">胎神方位</dt>
-              <dd class="detail-card-value">{{ almanacInfo.taiShen }}</dd>
-            </div>
-            <div class="detail-card is-compact">
-              <dt class="detail-card-label">五行</dt>
-              <dd class="detail-card-value">{{ almanacInfo.wuXing }}</dd>
-            </div>
-            <div class="detail-card detail-card-full is-highlighted">
-              <dt class="detail-card-label">彭祖百忌</dt>
-              <dd class="detail-card-value">{{ almanacInfo.pengZu }}</dd>
-            </div>
-            <div class="detail-card detail-card-full is-highlighted">
-              <dt class="detail-card-label">冲煞</dt>
-              <dd class="detail-card-value">{{ almanacInfo.chong }} (煞{{ almanacInfo.sha }})</dd>
-            </div>
-          </dl>
+
+          <div class="almanac-board">
+            <dl class="other-details">
+              <div class="detail-card detail-card-full detail-card-ganzhi">
+                <dt class="detail-card-label">干支</dt>
+                <dd class="detail-card-value">{{ almanacInfo.ganZhi }}</dd>
+              </div>
+              <div class="detail-card is-compact">
+                <dt class="detail-card-label">胎神方位</dt>
+                <dd class="detail-card-value">{{ almanacInfo.taiShen }}</dd>
+              </div>
+              <div class="detail-card is-compact">
+                <dt class="detail-card-label">五行</dt>
+                <dd class="detail-card-value">{{ almanacInfo.wuXing }}</dd>
+              </div>
+              <div class="detail-card detail-card-full is-highlighted">
+                <dt class="detail-card-label">彭祖百忌</dt>
+                <dd class="detail-card-value">{{ almanacInfo.pengZu }}</dd>
+              </div>
+              <div class="detail-card detail-card-full is-highlighted">
+                <dt class="detail-card-label">冲煞</dt>
+                <dd class="detail-card-value">{{ almanacInfo.chong }} (煞{{ almanacInfo.sha }})</dd>
+              </div>
+            </dl>
           </div>
           
           <!-- 十二时辰吉凶 -->
@@ -2126,7 +2126,8 @@ watch(activeThemeConfig, () => {
 .almanac-panel {
   width: 280px;
   background-color: var(--panel-bg);
-  border-left: 1px solid var(--border-color);
+  border-left: none;
+  box-shadow: -1px 0 0 var(--almanac-soft-line);
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -2160,12 +2161,12 @@ watch(activeThemeConfig, () => {
 
 .solar-full {
   font-weight: 600;
-  font-size: 0.86rem;
+  font-size: 0.95rem;
   color: var(--text-color);
 }
 
 .lunar-full {
-  font-size: 0.8rem;
+  font-size: 0.88rem;
   color: var(--secondary-text);
 }
 
@@ -2182,44 +2183,47 @@ watch(activeThemeConfig, () => {
   border-radius: 12px;
   overflow: hidden;
   background: var(--almanac-board-bg);
-  box-shadow: var(--almanac-shadow);
+  box-shadow: none;
 }
 
 .yi-ji {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0;
+  gap: 20px;
   margin: 0;
-  border-bottom: 1px solid var(--almanac-soft-divider);
+  padding-bottom: 8px;
+  border-bottom: none;
 }
 
 .yi-ji .item {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 7px 8px 8px;
-  min-height: 72px;
+  padding: 0;
+  min-height: 70px;
   background: transparent;
 }
 
 .yi-ji .item + .item {
-  border-left: 1px solid var(--almanac-soft-divider);
+  border-left: none;
 }
 
 .yi-ji .label { 
-  width: auto;
-  height: auto;
-  border-radius: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--almanac-gold);
   flex-shrink: 0;
   font-weight: 600;
-  border: none;
+  border: 1px solid currentColor;
   background: transparent;
   padding: 0;
-  font-size: 0.74rem;
+  font-size: 0.72rem;
+  line-height: 1;
+  margin-bottom: 2px;
 }
 
 .yi .label {
@@ -2231,8 +2235,8 @@ watch(activeThemeConfig, () => {
 }
 
 .yi-ji .content {
-  font-size: 0.72rem;
-  line-height: 1.32;
+  font-size: 0.78rem;
+  line-height: 1.4;
   color: var(--text-color);
   letter-spacing: 0.01em;
   writing-mode: horizontal-tb;
@@ -2253,7 +2257,7 @@ watch(activeThemeConfig, () => {
 .other-details {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0;
+  gap: 4px 8px;
   font-size: 0.85rem;
   margin: 0;
 }
@@ -2266,8 +2270,7 @@ watch(activeThemeConfig, () => {
   min-height: auto;
   padding: 6px 9px 7px;
   background: transparent;
-  border-top: 1px solid var(--almanac-soft-divider);
-  border-right: 1px solid var(--almanac-soft-divider);
+  border: none;
 }
 
 .detail-card.is-compact {
@@ -2276,7 +2279,7 @@ watch(activeThemeConfig, () => {
 
 .detail-card.is-highlighted {
   background: transparent;
-  box-shadow: inset 2px 0 0 var(--almanac-gold);
+  box-shadow: inset 1px 0 0 var(--almanac-gold-soft);
 }
 
 .detail-card-full {
@@ -2288,8 +2291,13 @@ watch(activeThemeConfig, () => {
   background: var(--almanac-ganzhi-bg);
 }
 
+.detail-card:nth-child(odd):not(.detail-card-full) {
+  background: var(--almanac-ganzhi-bg);
+  border-radius: 8px;
+}
+
 .detail-card-label {
-  font-size: 0.64rem;
+  font-size: 0.72rem;
   line-height: 1.2;
   color: var(--almanac-gold-soft);
   letter-spacing: 0.04em;
@@ -2299,29 +2307,32 @@ watch(activeThemeConfig, () => {
   margin: 0;
   color: var(--text-color);
   font-weight: 600;
-  font-size: 0.76rem;
-  line-height: 1.28;
+  font-size: 0.84rem;
+  line-height: 1.34;
   word-break: break-word;
 }
 
 /* 十二时辰吉凶 */
 .shichen-section {
-  border-radius: 10px;
-  overflow: hidden;
-  background: var(--almanac-board-bg);
+  padding-top: 10px;
+  border-top: none;
+  border-radius: 0;
+  overflow: visible;
+  background: transparent;
+  margin-top: 6px;
 }
 
 .shichen-compact {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
-  gap: 1px;
-  padding: 1px;
-  background: var(--almanac-shichen-grid);
+  gap: 2px;
+  padding: 0;
+  background: transparent;
 }
 
 .shichen-tag {
   display: block;
-  font-size: 0.68rem;
+  font-size: 0.74rem;
   text-align: center;
   padding: 6px 0 7px;
   border-radius: 0;
@@ -2334,17 +2345,18 @@ watch(activeThemeConfig, () => {
 
 .shichen-tag.is-ji {
   color: var(--almanac-gold);
-  background-color: var(--almanac-shichen-ji-bg);
+  background-color: var(--almanac-luck-ji-bg);
+  font-weight: 600;
 }
 
 .shichen-tag.is-xiong {
-  color: var(--text-color);
-  background-color: var(--panel-bg);
+  color: var(--secondary-text);
+  background-color: var(--almanac-board-bg);
 }
 
 .shichen-tag.is-current {
   font-weight: 700;
-  background-color: var(--almanac-shichen-current-bg);
+  background-color: var(--almanac-board-bg);
   outline: 1px solid var(--almanac-gold);
   outline-offset: -1px;
 }
@@ -2354,11 +2366,11 @@ watch(activeThemeConfig, () => {
 }
 
 .shichen-tag.is-active.is-ji {
-  background-color: var(--almanac-shichen-active-ji-bg);
+  background-color: var(--almanac-board-bg);
 }
 
 .shichen-tag.is-active.is-xiong {
-  background-color: var(--almanac-shichen-active-xiong-bg);
+  background-color: var(--panel-bg);
 }
 
 /* 时辰详情面板 */
@@ -2366,9 +2378,9 @@ watch(activeThemeConfig, () => {
   margin-top: 0;
   padding: 7px 9px;
   background: var(--almanac-detail-bg);
-  border-top: 1px solid var(--almanac-soft-divider);
+  border-top: none;
   border-radius: 0;
-  font-size: 0.74rem;
+  font-size: 0.8rem;
   line-height: 1.4;
   color: var(--text-color, #374151);
 }
@@ -2500,7 +2512,7 @@ watch(activeThemeConfig, () => {
 /* 黄历详情中的节日显示 */
 .festival-section {
   padding: 12px 0;
-  border-bottom: 1px dashed var(--border-color);
+  border-bottom: none;
 }
 
 .festival-list {
