@@ -2305,8 +2305,8 @@ watch(activeThemeConfig, () => {
 
 .detail-card-value {
   margin: 0;
-  color: var(--text-color);
-  font-weight: 600;
+  color: var(--secondary-text);
+  font-weight: 500;
   font-size: 0.84rem;
   line-height: 1.34;
   word-break: break-word;
