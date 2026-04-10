@@ -1,6 +1,6 @@
 # 合社日历
 
-> 有温度的中国风日历🍵 - 支持网页和utools插件
+> 有温度的中国风日历🍵 - 支持网页、uTools 插件与远程 MCP
 >
 > [开源地址](https://github.com/scutken/he-calendar) | [在线示例](https://cal.heshe.tech)
 
@@ -43,6 +43,22 @@
 - `黄历`
 - `calendar`
 
+### 🔌 远程 MCP
+
+- 远程端点：`/mcp`
+- 传输方式：Streamable HTTP（JSON 响应模式）
+- 当前鉴权：固定 Bearer Token（通过 `HE_CALENDAR_MCP_API_KEY` 配置）
+- 已适配部署：Vercel Functions
+
+示例：
+
+```bash
+curl https://<your-vercel-domain>/mcp \
+  -H "Authorization: Bearer <YOUR_FIXED_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
 ### 💡 操作指南
 
 - **切换月份**：使用鼠标滚轮上下滚动，或点击左右箭头按钮
@@ -56,9 +72,11 @@
 
 - **Vue 3**：现代化的渐进式 JavaScript 框架
 - **Vite**：下一代前端构建工具
+- **Vercel Functions**：网页与远程 MCP 同域部署
 - **Day.js**：轻量级日期处理库
 - **tyme4ts**：强大的农历、节气、黄历计算库（6tail）
 - **Lucide Vue Next**：精美的图标库
+- **Model Context Protocol SDK**：远程 MCP 接入
 
 ## 版本说明
 

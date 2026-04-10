@@ -27,3 +27,4 @@ upxs
 # Playwright artifacts
 .playwright-cli/
 output/playwright/
+.vercel
