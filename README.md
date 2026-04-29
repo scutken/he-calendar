@@ -1,6 +1,6 @@
 # 合社日历
 
-> 有温度的中国风日历🍵 - 支持网页、uTools 插件与远程 MCP
+> 有温度的中国风日历🍵 - 支持网页与 uTools 插件
 >
 > [开源地址](https://github.com/scutken/he-calendar) | [在线示例](https://cal.heshe.tech)
 
@@ -43,21 +43,17 @@
 - `黄历`
 - `calendar`
 
-### 🔌 远程 MCP
+### 🚀 部署
 
-- 远程端点：`/mcp`
-- 传输方式：Streamable HTTP（JSON 响应模式）
-- 当前鉴权：固定 Bearer Token（通过 `HE_CALENDAR_MCP_API_KEY` 配置）
-- 已适配部署：Vercel Functions
+本项目为纯静态站点，推荐部署到腾讯云 EdgeOne Pages：
 
-示例：
+1. 在 [EdgeOne Pages 控制台](https://console.cloud.tencent.com/edgeone/pages) 新建项目并关联 GitHub 仓库
+2. 构建命令：`npm run build`
+3. 输出目录：`dist`
+4. Node 版本：`20`
+5. 推送到默认分支即自动构建并全球分发
 
-```bash
-curl https://<your-vercel-domain>/mcp \
-  -H "Authorization: Bearer <YOUR_FIXED_TOKEN>" \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
-```
+也可以使用任何静态托管平台（GitHub Pages、Cloudflare Pages、Netlify 等），只需把 `dist` 目录作为产物即可。
 
 ### 💡 操作指南
 
@@ -72,11 +68,10 @@ curl https://<your-vercel-domain>/mcp \
 
 - **Vue 3**：现代化的渐进式 JavaScript 框架
 - **Vite**：下一代前端构建工具
-- **Vercel Functions**：网页与远程 MCP 同域部署
+- **EdgeOne Pages**：腾讯云边缘静态站点托管
 - **Day.js**：轻量级日期处理库
 - **tyme4ts**：强大的农历、节气、黄历计算库（6tail）
 - **Lucide Vue Next**：精美的图标库
-- **Model Context Protocol SDK**：远程 MCP 接入
 
 ## 版本说明
 

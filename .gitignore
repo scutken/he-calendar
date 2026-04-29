@@ -28,3 +28,13 @@ upxs
 .playwright-cli/
 output/playwright/
 .vercel
+
+# Tencent Cloud EdgeOne
+.env
+.edgeone/*
+.tef_dist/*
+
+# Qoder skills
+.agents/
+skills-lock.json
+  
