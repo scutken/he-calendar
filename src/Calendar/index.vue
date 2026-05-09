@@ -2,8 +2,9 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import dayjs from 'dayjs';
 import { SolarDay, LunarDay, SolarTerm, LegalHoliday, SolarFestival, LunarFestival, Taboo, PengZu, FetusDay } from 'tyme4ts';
-import { ChevronLeft, ChevronRight, Palette, Settings, Github, ExternalLink, User, Sun, Moon, Monitor, CalendarDays } from 'lucide-vue-next';
+import { ChevronLeft, ChevronRight, Palette, Settings, Github, ExternalLink, User, Sun, Moon, Monitor, CalendarDays, CloudSun, MapPin, LocateFixed } from 'lucide-vue-next';
 import { projectConfig } from '../config';
+import { searchLocations, fetchWeatherData, autoLocateAndFetch, LocationError, WeatherError } from '../services/weather-service.js'
 
 const props = defineProps(['enterAction']);
 
@@ -40,6 +41,8 @@ const showSolarFestivals = ref(getStorageItem('calendar-show-solar-festivals', '
 const showLunarFestivals = ref(getStorageItem('calendar-show-lunar-festivals', 'true') === 'true'); // 农历传统节日
 const showInternationalFestivals = ref(getStorageItem('calendar-show-international-festivals', 'true') === 'true'); // 国际节日
 const showSolarTerms = ref(getStorageItem('calendar-show-solar-terms', 'true') === 'true'); // 二十四节气
+const showWeather = ref(getStorageItem('calendar-show-weather', 'true') === 'true'); // 天气显示开关
+const isUtools = ref(!!window.utools); // 是否在 uTools 环境
 const showFestivalPanel = ref(false); // 节日配置面板展开状态
 
 // 节日弹出卡片状态
@@ -673,6 +676,198 @@ const toggleSolarTerms = () => {
   setStorageItem('calendar-show-solar-terms', showSolarTerms.value.toString());
 };
 
+// 天气开关
+const toggleWeather = () => {
+  showWeather.value = !showWeather.value;
+  setStorageItem('calendar-show-weather', showWeather.value.toString());
+  if (showWeather.value && !weatherData.value) {
+    fetchWeather();
+  }
+};
+
+// 天气数据
+const weatherData = ref(null);
+const weatherLoading = ref(false);
+const weatherError = ref('');
+const weatherLocatedName = ref(''); // 自动定位到的地点名称
+let weatherTimer = null;
+const showWeatherCard = ref(false);
+let weatherCardTimer = null;
+
+// 天气位置存储辅助函数
+const getSavedWeatherLocation = () => {
+  try {
+    const raw = isUtools.value
+      ? window.utools?.dbStorage?.getItem('calendar-weather-location')
+      : localStorage.getItem('calendar-weather-location')
+    return raw ? JSON.parse(raw) : null
+  } catch { return null }
+};
+
+const saveWeatherLocation = (location) => {
+  if (!location) {
+    if (isUtools.value) {
+      window.utools?.dbStorage?.removeItem('calendar-weather-location')
+    } else {
+      localStorage.removeItem('calendar-weather-location')
+    }
+    return
+  }
+  const json = JSON.stringify(location)
+  if (isUtools.value) {
+    window.utools?.dbStorage?.setItem('calendar-weather-location', json)
+  } else {
+    localStorage.setItem('calendar-weather-location', json)
+  }
+};
+
+const startHideWeatherCard = () => {
+  weatherCardTimer = setTimeout(() => {
+    showWeatherCard.value = false;
+  }, 200);
+};
+
+const cancelHideWeatherCard = () => {
+  if (weatherCardTimer) {
+    clearTimeout(weatherCardTimer);
+    weatherCardTimer = null;
+  }
+};
+
+const formatForecastDate = (dateStr) => {
+  const today = dayjs().startOf('day');
+  const target = dayjs(dateStr, 'YYYY-MM-DD');
+  const diff = target.diff(today, 'day');
+  if (diff === 1) return '明天';
+  if (diff === 2) return '后天';
+  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  return weekdays[target.day()];
+};
+
+// 数据转换：将 service 层返回的天气数据映射为组件内部格式
+const mapWeatherData = (data) => ({
+  temp: data.current?.temp,
+  feelsLike: data.current?.feelsLike,
+  humidity: data.current?.humidity,
+  desc: data.current?.weather,
+  windSpeed: data.current?.windSpeed,
+  windDir: data.current?.windDir,
+  icon: data.current?.icon,
+  locationName: data.locationName,
+  forecast: data.daily?.slice(0, 3).map(d => ({
+    date: d.date,
+    maxTemp: d.maxTemp,
+    minTemp: d.minTemp,
+    desc: d.weatherDay,
+    icon: d.icon
+  })),
+  hourly: data.hourly?.slice(0, 24).map(h => ({
+    hour: h.hour,
+    temp: h.temp,
+    desc: h.weather,
+    icon: h.icon
+  }))
+});
+
+const fetchWeather = async () => {
+  if (!showWeather.value) return;
+  weatherLoading.value = true;
+  weatherError.value = '';
+  try {
+    const savedLocation = getSavedWeatherLocation()
+
+    if (savedLocation && savedLocation.locationKey) {
+      // 有已保存位置，直接获取天气
+      const data = await fetchWeatherData(savedLocation)
+      weatherData.value = mapWeatherData(data)
+      weatherLocatedName.value = data.locationName
+    } else if (!isUtools.value) {
+      // 网页版：自动定位
+      const result = await autoLocateAndFetch()
+      weatherData.value = mapWeatherData(result.weatherData)
+      saveWeatherLocation(result.location)
+      weatherLocatedName.value = result.weatherData.locationName
+    }
+  } catch (err) {
+    console.warn('获取天气失败:', err)
+    if (err instanceof LocationError) {
+      weatherError.value = '定位失败'
+    } else if (err instanceof WeatherError) {
+      weatherError.value = '获取天气失败'
+    } else {
+      weatherError.value = '获取天气失败'
+    }
+  } finally {
+    weatherLoading.value = false;
+  }
+};
+
+// 天气位置搜索
+const locationSearchQuery = ref('');
+const locationSearchResults = ref([]);
+const locationSearching = ref(false);
+const locationInputFocused = ref(false);
+let locationSearchTimer = null;
+
+const handleLocationBlur = () => {
+  // 延迟关闭，让搜索结果点击事件有时间触发
+  setTimeout(() => {
+    locationInputFocused.value = false;
+  }, 200);
+};
+
+const searchLocation = (query) => {
+  locationSearchQuery.value = query;
+  if (locationSearchTimer) clearTimeout(locationSearchTimer);
+  if (!query || query.length < 2) {
+    locationSearchResults.value = [];
+    return;
+  }
+  locationSearchTimer = setTimeout(async () => {
+    locationSearching.value = true;
+    try {
+      const results = await searchLocations(query)
+      locationSearchResults.value = results.map(item => ({
+        name: item.name,
+        path: item.affiliation || '',
+        locationKey: item.locationKey,
+        lat: item.lat,
+        lon: item.lon
+      }))
+    } catch (e) {
+      locationSearchResults.value = [];
+    } finally {
+      locationSearching.value = false;
+    }
+  }, 400);
+};
+
+const selectLocation = async (item) => {
+  const location = {
+    name: item.name,
+    locationKey: item.locationKey,
+    lat: item.lat,
+    lon: item.lon
+  }
+  saveWeatherLocation(location)
+  weatherLocatedName.value = item.name
+  locationSearchResults.value = []
+  locationSearchQuery.value = ''
+  locationInputFocused.value = false
+
+  try {
+    const data = await fetchWeatherData(location)
+    weatherData.value = mapWeatherData(data)
+  } catch (err) {
+    console.warn('获取天气失败:', err)
+  }
+};
+
+const clearLocationSearch = () => {
+  locationSearchQuery.value = '';
+  locationSearchResults.value = [];
+};
+
 const toggleSettings = () => {
   showSettings.value = !showSettings.value;
   if (showSettings.value) {
@@ -1223,11 +1418,19 @@ onMounted(() => {
   
   // 监听系统主题变化（web 原生方式，uTools 官方推荐）
   darkModeMediaQuery.addEventListener('change', handleSystemThemeChange);
+  
+  // 获取天气数据
+  if (showWeather.value) {
+    fetchWeather();
+    // 每30分钟刷新一次天气
+    weatherTimer = setInterval(fetchWeather, 30 * 60 * 1000);
+  }
 });
 
 onUnmounted(() => {
   window.removeEventListener('click', handleGlobalClick);
   darkModeMediaQuery.removeEventListener('change', handleSystemThemeChange);
+  if (weatherTimer) clearInterval(weatherTimer);
 });
 
 // 监听主题变化
@@ -1248,6 +1451,58 @@ watch(activeThemeConfig, () => {
           {{ currentMonth.format('MM月') }}
         </span>
         <span v-if="dayDifference" class="day-diff">{{ dayDifference }}</span>
+        
+        <!-- 天气摘要入口 -->
+        <div v-if="showWeather && weatherData" class="weather-brief"
+             @mouseenter="showWeatherCard = true"
+             @mouseleave="startHideWeatherCard()">
+          <span class="weather-brief-icon">{{ weatherData.icon }}</span>
+          <span class="weather-brief-temp">{{ weatherData.temp }}°C</span>
+          <span class="weather-brief-desc">{{ weatherData.desc }}</span>
+          <span v-if="weatherData.locationName" class="weather-brief-city">· {{ weatherData.locationName }}</span>
+          
+          <!-- 悬停详情卡片 -->
+          <div v-if="showWeatherCard" class="weather-card"
+               @mouseenter="cancelHideWeatherCard()"
+               @mouseleave="startHideWeatherCard()">
+            <div class="weather-card-current">
+              <div class="weather-card-main">
+                <span class="weather-card-icon">{{ weatherData.icon }}</span>
+                <span class="weather-card-temp">{{ weatherData.temp }}°C</span>
+                <span class="weather-card-desc">{{ weatherData.desc }}</span>
+              </div>
+              <div class="weather-card-detail">
+                <span>体感 {{ weatherData.feelsLike }}°C</span>
+                <span>湿度 {{ weatherData.humidity }}%</span>
+                <span>风速 {{ weatherData.windSpeed }}km/h</span>
+              </div>
+              <div v-if="weatherData.locationName" class="weather-card-location">
+                📍 {{ weatherData.locationName }}
+              </div>
+            </div>
+            <!-- 逐小时预报 -->
+            <div v-if="weatherData.hourly && weatherData.hourly.length" class="weather-hourly">
+              <div class="weather-hourly-title">逐时预报</div>
+              <div class="weather-hourly-scroll">
+                <div v-for="(item, idx) in weatherData.hourly" :key="idx" class="weather-hourly-item">
+                  <span class="hourly-time">{{ item.hour }}</span>
+                  <span class="hourly-icon">{{ item.icon }}</span>
+                  <span class="hourly-temp">{{ item.temp }}°</span>
+                </div>
+              </div>
+            </div>
+            <!-- 逐日预报 -->
+            <div v-if="weatherData.forecast && weatherData.forecast.length" class="weather-card-forecast">
+              <div class="weather-card-forecast-title">未来预报</div>
+              <div v-for="(day, idx) in weatherData.forecast" :key="idx" class="weather-card-forecast-item">
+                <span class="forecast-date">{{ formatForecastDate(day.date) }}</span>
+                <span class="forecast-icon">{{ day.icon }}</span>
+                <span class="forecast-temp">{{ day.minTemp }} ~ {{ day.maxTemp }}°C</span>
+                <span class="forecast-desc">{{ day.desc }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
         
         <!-- Year Picker Dropdown -->
         <div v-if="showYearPicker" class="picker-dropdown year-picker" @click.stop>
@@ -1419,6 +1674,52 @@ watch(activeThemeConfig, () => {
                   :class="{ active: showInternationalFestivals }" 
                   @click="toggleInternationalFestivals"
                 >国际</span>
+              </div>
+            </div>
+            
+            <div class="settings-separator"></div>
+            
+            <div class="settings-section">
+              <div class="section-title weather-header">
+                <CloudSun :size="14" class="weather-title-icon" />
+                <span>天气显示</span>
+                <span class="weather-toggle" :class="{ active: showWeather }" @click="toggleWeather">
+                  {{ showWeather ? '开' : '关' }}
+                </span>
+              </div>
+              <div v-if="showWeather" class="weather-location-input">
+                <div class="location-search-box">
+                  <span v-if="weatherLocatedName && !locationInputFocused && !locationSearchQuery" class="location-prefix">
+                    <MapPin :size="12" />
+                    {{ weatherLocatedName }}
+                  </span>
+                  <input 
+                    type="text" 
+                    :value="locationSearchQuery" 
+                    @input="e => searchLocation(e.target.value)"
+                    @focus="e => { locationInputFocused = true; if (e.target.value.length >= 2) searchLocation(e.target.value) }"
+                    @blur="handleLocationBlur"
+                    :placeholder="locationInputFocused || locationSearchQuery ? '搜索城市/区镇' : (weatherLocatedName || '搜索城市/区镇')"
+                    class="location-input"
+                  />
+                  <span v-if="!isUtools" class="location-auto-btn" @click="saveWeatherLocation(null); clearLocationSearch(); fetchWeather();">
+                    <LocateFixed :size="12" />
+                  </span>
+                  <div v-if="locationSearchResults.length > 0" class="location-results">
+                    <div 
+                      v-for="(item, idx) in locationSearchResults" 
+                      :key="idx"
+                      class="location-result-item"
+                      @click="selectLocation(item)"
+                    >
+                      <span class="result-name">{{ item.name }}</span>
+                      <span class="result-path">{{ item.path }}</span>
+                    </div>
+                  </div>
+                  <div v-else-if="locationSearching" class="location-results">
+                    <div class="location-result-item location-searching">搜索中...</div>
+                  </div>
+                </div>
               </div>
             </div>
             
@@ -1749,9 +2050,7 @@ watch(activeThemeConfig, () => {
   border-color: var(--primary-color);
 }
 
-.theme-trigger {
-  /* 统一使用 icon-btn 的颜色定义 */
-}
+/* .theme-trigger 统一使用 .icon-btn 的颜色定义，无需额外样式 */
 
 .theme-picker {
   position: relative;
@@ -1813,10 +2112,7 @@ watch(activeThemeConfig, () => {
   display: none;
 }
 
-/* 移除悬停显示逻辑 */
-.theme-options:hover {
-  /* 保持显示由 v-if 控制 */
-}
+/* .theme-options:hover 保持显示由 v-if 控制，无需悬停样式 */
 
 .theme-dot {
   width: 28px;
@@ -2507,6 +2803,334 @@ watch(activeThemeConfig, () => {
 .festival-tag.active {
   background: var(--primary-color);
   color: #ffffff;
+}
+
+/* 天气显示样式 */
+.weather-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.weather-title-icon {
+  color: var(--accent-color);
+}
+
+.weather-toggle {
+  margin-left: auto;
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  background: var(--hover-bg);
+  color: var(--secondary-text);
+  transition: all 0.2s;
+}
+
+.weather-toggle.active {
+  background: var(--primary-color);
+  color: #ffffff;
+}
+
+.weather-location-input {
+  margin-top: 8px;
+}
+
+.location-search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--hover-bg);
+  transition: border-color 0.2s;
+}
+
+.location-search-box:focus-within {
+  border-color: var(--primary-color);
+}
+
+.location-prefix {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 2px 0 8px;
+  font-size: 0.7rem;
+  color: var(--secondary-text);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.location-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 5px 8px;
+  font-size: 0.75rem;
+  color: var(--text-color);
+  outline: none;
+  min-width: 60px;
+}
+
+.location-input::placeholder {
+  color: var(--secondary-text);
+  opacity: 0.7;
+}
+
+.location-auto-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  cursor: pointer;
+  color: var(--secondary-text);
+  opacity: 0.6;
+  flex-shrink: 0;
+  transition: color 0.2s, opacity 0.2s;
+}
+
+.location-auto-btn:hover {
+  color: var(--primary-color);
+  opacity: 1;
+}
+
+.location-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  z-index: 400;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.location-result-item {
+  padding: 6px 10px;
+  font-size: 0.7rem;
+  color: var(--text-color);
+  cursor: pointer;
+  transition: background 0.15s;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.location-result-item:last-child {
+  border-bottom: none;
+}
+
+.location-result-item:hover {
+  background: var(--hover-bg);
+}
+
+.result-name {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.result-path {
+  font-size: 0.6rem;
+  color: var(--secondary-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.location-result-item.location-searching {
+  color: var(--secondary-text);
+  cursor: default;
+  text-align: center;
+  justify-content: center;
+}
+
+/* 天气摘要入口 */
+.weather-brief {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: var(--secondary-text);
+  cursor: default;
+  padding: 4px 10px;
+  border-radius: 16px;
+  transition: background 0.2s;
+  margin-left: 8px;
+}
+
+.weather-brief:hover {
+  background: var(--hover-bg);
+}
+
+.weather-brief-icon {
+  font-size: 1rem;
+}
+
+.weather-brief-temp {
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.weather-brief-desc {
+  color: var(--secondary-text);
+}
+
+.weather-brief-city {
+  color: var(--secondary-text);
+  opacity: 0.7;
+  font-size: 0.75rem;
+}
+
+/* 悬停详情卡片 */
+.weather-card {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 14px 16px;
+  min-width: 260px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  z-index: 500;
+  white-space: nowrap;
+}
+
+.weather-card-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.weather-card-icon {
+  font-size: 1.5rem;
+}
+
+.weather-card-temp {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.weather-card-desc {
+  font-size: 0.85rem;
+  color: var(--secondary-text);
+}
+
+.weather-card-detail {
+  display: flex;
+  gap: 12px;
+  font-size: 0.75rem;
+  color: var(--secondary-text);
+  margin-bottom: 6px;
+}
+
+.weather-card-location {
+  font-size: 0.7rem;
+  color: var(--secondary-text);
+  opacity: 0.7;
+  margin-bottom: 10px;
+}
+
+.weather-card-forecast {
+  border-top: 1px solid var(--border-color);
+  padding-top: 10px;
+}
+
+.weather-card-forecast-title {
+  font-size: 0.7rem;
+  color: var(--secondary-text);
+  margin-bottom: 6px;
+}
+
+.weather-card-forecast-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 0.75rem;
+}
+
+.forecast-date {
+  min-width: 50px;
+  color: var(--text-color);
+}
+
+.forecast-icon {
+  font-size: 0.9rem;
+}
+
+.forecast-temp {
+  min-width: 80px;
+  color: var(--text-color);
+}
+
+.forecast-desc {
+  color: var(--secondary-text);
+}
+
+.weather-hourly {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color, rgba(0,0,0,0.06));
+}
+
+.weather-hourly-title {
+  font-size: 0.7rem;
+  color: var(--secondary-text, #666);
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.weather-hourly-scroll {
+  display: flex;
+  overflow-x: auto;
+  gap: 12px;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.weather-hourly-scroll::-webkit-scrollbar {
+  height: 3px;
+}
+
+.weather-hourly-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.15);
+  border-radius: 2px;
+}
+
+.weather-hourly-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 40px;
+  flex-shrink: 0;
+}
+
+.hourly-time {
+  font-size: 0.65rem;
+  color: var(--secondary-text, #888);
+  white-space: nowrap;
+}
+
+.hourly-icon {
+  font-size: 0.9rem;
+  line-height: 1.2;
+}
+
+.hourly-temp {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-color, #333);
 }
 
 /* 黄历详情中的节日显示 */

@@ -26,5 +26,15 @@ const bundlePreload = () => ({
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [vue(), bundlePreload()],
-  base: './' // 保持相对路径，或者根据仓库名设置为 '/he-calendar/'
+  base: './', // 保持相对路径，或者根据仓库名设置为 '/he-calendar/'
+  server: {
+    proxy: {
+      // 代理小米天气 API，解决浏览器 CORS 跨域限制
+      '/api/weather': {
+        target: 'https://weatherapi.market.xiaomi.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/weather/, '/wtr-v3'),
+      },
+    },
+  },
 })
