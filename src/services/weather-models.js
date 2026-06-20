@@ -64,19 +64,38 @@ const WEATHER_ICON_RULES = [
 ]
 
 /**
+ * 根据温度获取对应的颜色编码
+ * @param {number} temp - 温度值（摄氏度）
+ * @returns {string} 对应的 hex 颜色
+ */
+export function getTempColor(temp) {
+  if (temp <= 0) return '#3b82f6'
+  if (temp <= 10) return '#60a5fa'
+  if (temp <= 20) return '#22c55e'
+  if (temp <= 28) return '#eab308'
+  if (temp <= 35) return '#f97316'
+  return '#ef4444'
+}
+
+/**
  * 根据天气描述文本获取对应的天气 emoji
  * @param {string} weatherText - 天气描述文本（如"晴"、"多云"、"小雨"等）
+ * @param {boolean} isNight - 是否为夜间（影响晴/多云图标）
  * @returns {string} 对应的天气 emoji
  */
-export function getWeatherIcon(weatherText) {
-  if (!weatherText) return '🌤️'
+export function getWeatherIcon(weatherText, isNight = false) {
+  if (!weatherText) return isNight ? '🌙' : '🌤️'
 
   for (const [pattern, icon] of WEATHER_ICON_RULES) {
     if (pattern.test(weatherText)) {
+      if (isNight) {
+        if (icon === '☀️') return '🌙'
+        if (icon === '⛅') return '☁️'
+      }
       return icon
     }
   }
-  return '🌤️'
+  return isNight ? '🌙' : '🌤️'
 }
 
 /**
@@ -114,6 +133,10 @@ export function parseCurrentWeather(current) {
   if (!current) return null
 
   const weather = getWeatherTextByCode(Number(current.weather) || 0)
+  const now = new Date()
+  const hour = now.getHours()
+  const isNight = hour < 6 || hour >= 18
+
   return {
     temp: Number(current.temperature?.value) || 0,
     feelsLike: Number(current.feelsLike?.value) || 0,
@@ -124,7 +147,7 @@ export function parseCurrentWeather(current) {
     weather,
     windDir: String(current.wind?.direction?.value ?? ''),
     windSpeed: Number(current.wind?.speed?.value) || 0,
-    icon: getWeatherIcon(weather)
+    icon: getWeatherIcon(weather, isNight)
   }
 }
 
@@ -186,7 +209,9 @@ export function parseHourlyForecast(forecastHourly) {
   return tempValues.map((temp, index) => {
     const hourTime = new Date(baseTime)
     hourTime.setHours(hourTime.getHours() + index)
-    const hourStr = `${String(hourTime.getHours()).padStart(2, '0')}:00`
+    const hour = hourTime.getHours()
+    const hourStr = `${String(hour).padStart(2, '0')}:00`
+    const isNight = hour < 6 || hour >= 18
 
     const weatherCode = Number(weatherValues[index]) || 0
     const weatherText = getWeatherTextByCode(weatherCode)
@@ -195,7 +220,8 @@ export function parseHourlyForecast(forecastHourly) {
       hour: hourStr,
       temp: Number(temp) || 0,
       weather: weatherText,
-      icon: getWeatherIcon(weatherText)
+      icon: getWeatherIcon(weatherText, isNight),
+      isNight
     }
   })
 }

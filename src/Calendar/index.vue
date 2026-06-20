@@ -5,6 +5,7 @@ import { SolarDay, LunarDay, SolarTerm, LegalHoliday, SolarFestival, LunarFestiv
 import { ChevronLeft, ChevronRight, Palette, Settings, Github, ExternalLink, User, Sun, Moon, Monitor, CalendarDays, CloudSun, MapPin, LocateFixed } from 'lucide-vue-next';
 import { projectConfig } from '../config';
 import { searchLocations, fetchWeatherData, autoLocateAndFetch, LocationError, WeatherError } from '../services/weather-service.js'
+import { getTempColor } from '../services/weather-models.js'
 
 const props = defineProps(['enterAction']);
 
@@ -495,6 +496,11 @@ const applyTheme = () => {
   root.style.setProperty('--almanac-detail-bg', mixColors(theme.accentColor, panelBg, 0.02));
   root.style.setProperty('--almanac-luck-ji-bg', withAlpha(theme.accentColor, 0.065));
   root.style.setProperty('--almanac-luck-xiong-bg', withAlpha(theme.accentColor, 0.03));
+  // 节日标签背景（替代 color-mix，保证 uTools 兼容性）
+  root.style.setProperty('--festival-item-bg', withAlpha(theme.primaryColor, 0.15));
+  root.style.setProperty('--festival-item-hover-bg', withAlpha(theme.primaryColor, 0.25));
+  root.style.setProperty('--festival-item-type-bg', withAlpha(theme.primaryColor, 0.20));
+  root.style.setProperty('--festival-card-type-bg', withAlpha(theme.primaryColor, 0.20));
 };
 
 const switchColorMode = (mode) => {
@@ -738,6 +744,7 @@ const formatForecastDate = (dateStr) => {
   const today = dayjs().startOf('day');
   const target = dayjs(dateStr, 'YYYY-MM-DD');
   const diff = target.diff(today, 'day');
+  if (diff === 0) return '今天';
   if (diff === 1) return '明天';
   if (diff === 2) return '后天';
   const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
@@ -754,7 +761,7 @@ const mapWeatherData = (data) => ({
   windDir: data.current?.windDir,
   icon: data.current?.icon,
   locationName: data.locationName,
-  forecast: data.daily?.slice(0, 3).map(d => ({
+  forecast: data.daily?.slice(1, 4).map(d => ({
     date: d.date,
     maxTemp: d.maxTemp,
     minTemp: d.minTemp,
@@ -839,7 +846,7 @@ const searchLocation = (query) => {
     } finally {
       locationSearching.value = false;
     }
-  }, 400);
+  }, 300);
 };
 
 const selectLocation = async (item) => {
@@ -1453,7 +1460,12 @@ watch(activeThemeConfig, () => {
         <span v-if="dayDifference" class="day-diff">{{ dayDifference }}</span>
         
         <!-- 天气摘要入口 -->
-        <div v-if="showWeather && weatherData" class="weather-brief"
+        <!-- 天气加载中 -->
+        <div v-if="showWeather && weatherLoading" class="weather-brief weather-brief-loading">
+          <span class="weather-brief-icon">⏳</span>
+          <span class="weather-brief-desc">加载天气中...</span>
+        </div>
+        <div v-else-if="showWeather && weatherData" class="weather-brief"
              @mouseenter="showWeatherCard = true"
              @mouseleave="startHideWeatherCard()">
           <span class="weather-brief-icon">{{ weatherData.icon }}</span>
@@ -1465,16 +1477,28 @@ watch(activeThemeConfig, () => {
           <div v-if="showWeatherCard" class="weather-card"
                @mouseenter="cancelHideWeatherCard()"
                @mouseleave="startHideWeatherCard()">
+            <!-- 当前天气 -->
             <div class="weather-card-current">
               <div class="weather-card-main">
                 <span class="weather-card-icon">{{ weatherData.icon }}</span>
-                <span class="weather-card-temp">{{ weatherData.temp }}°C</span>
-                <span class="weather-card-desc">{{ weatherData.desc }}</span>
+                <div class="weather-card-temp-wrap">
+                  <span class="weather-card-temp" :style="{ color: getTempColor(weatherData.temp) }">{{ weatherData.temp }}°C</span>
+                  <span class="weather-card-desc">{{ weatherData.desc }}</span>
+                </div>
               </div>
               <div class="weather-card-detail">
-                <span>体感 {{ weatherData.feelsLike }}°C</span>
-                <span>湿度 {{ weatherData.humidity }}%</span>
-                <span>风速 {{ weatherData.windSpeed }}km/h</span>
+                <div class="detail-cell">
+                  <span class="detail-label">体感</span>
+                  <span class="detail-value">{{ weatherData.feelsLike }}°C</span>
+                </div>
+                <div class="detail-cell">
+                  <span class="detail-label">湿度</span>
+                  <span class="detail-value">{{ weatherData.humidity }}%</span>
+                </div>
+                <div class="detail-cell">
+                  <span class="detail-label">风速</span>
+                  <span class="detail-value">{{ weatherData.windSpeed }}km/h</span>
+                </div>
               </div>
               <div v-if="weatherData.locationName" class="weather-card-location">
                 📍 {{ weatherData.locationName }}
@@ -1482,26 +1506,40 @@ watch(activeThemeConfig, () => {
             </div>
             <!-- 逐小时预报 -->
             <div v-if="weatherData.hourly && weatherData.hourly.length" class="weather-hourly">
-              <div class="weather-hourly-title">逐时预报</div>
               <div class="weather-hourly-scroll">
                 <div v-for="(item, idx) in weatherData.hourly" :key="idx" class="weather-hourly-item">
                   <span class="hourly-time">{{ item.hour }}</span>
                   <span class="hourly-icon">{{ item.icon }}</span>
-                  <span class="hourly-temp">{{ item.temp }}°</span>
+                  <span class="hourly-temp" :style="{ color: getTempColor(item.temp) }">{{ item.temp }}°</span>
                 </div>
               </div>
             </div>
-            <!-- 逐日预报 -->
+            <!-- 未来预报 -->
             <div v-if="weatherData.forecast && weatherData.forecast.length" class="weather-card-forecast">
-              <div class="weather-card-forecast-title">未来预报</div>
               <div v-for="(day, idx) in weatherData.forecast" :key="idx" class="weather-card-forecast-item">
                 <span class="forecast-date">{{ formatForecastDate(day.date) }}</span>
                 <span class="forecast-icon">{{ day.icon }}</span>
-                <span class="forecast-temp">{{ day.minTemp }} ~ {{ day.maxTemp }}°C</span>
                 <span class="forecast-desc">{{ day.desc }}</span>
+                <span class="forecast-temp">
+                  <span :style="{ color: getTempColor(day.minTemp) }">{{ day.minTemp }}°</span>
+                  <span class="forecast-temp-divider">~</span>
+                  <span :style="{ color: getTempColor(day.maxTemp) }">{{ day.maxTemp }}°</span>
+                </span>
               </div>
             </div>
           </div>
+        </div>
+        <!-- 天气加载失败 -->
+        <div v-else-if="showWeather && weatherError" class="weather-brief weather-brief-error"
+             @click="fetchWeather">
+          <span class="weather-brief-icon">⚠️</span>
+          <span class="weather-brief-desc">{{ weatherError }}</span>
+          <span class="weather-brief-retry">点击重试</span>
+        </div>
+        <div v-else-if="showWeather && !weatherLoading" class="weather-brief weather-brief-hint"
+             @click="toggleSettings">
+          <span class="weather-brief-icon">🌤️</span>
+          <span class="weather-brief-desc">搜索城市以开启天气</span>
         </div>
         
         <!-- Year Picker Dropdown -->
@@ -2993,30 +3031,60 @@ watch(activeThemeConfig, () => {
   top: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
+  width: 300px;
+  max-height: 420px;
+  overflow-y: auto;
   background: var(--panel-bg);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--almanac-line);
   border-radius: 12px;
   padding: 14px 16px;
-  min-width: 260px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.12);
   z-index: 500;
-  white-space: nowrap;
+  opacity: 0;
+  animation: weatherCardIn 0.2s ease forwards;
+}
+
+@keyframes weatherCardIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(-4px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.weather-card::-webkit-scrollbar {
+  width: 3px;
+}
+
+.weather-card::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 2px;
+}
+
+.weather-card-current {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--almanac-line);
 }
 
 .weather-card-main {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
 .weather-card-icon {
-  font-size: 1.5rem;
+  font-size: 2.2rem;
+  line-height: 1;
+}
+
+.weather-card-temp-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .weather-card-temp {
-  font-size: 1.2rem;
-  font-weight: 600;
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
   color: var(--text-color);
 }
 
@@ -3026,75 +3094,91 @@ watch(activeThemeConfig, () => {
 }
 
 .weather-card-detail {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.detail-cell {
   display: flex;
-  gap: 12px;
-  font-size: 0.75rem;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  text-align: center;
+}
+
+.detail-label {
+  font-size: 0.7rem;
   color: var(--secondary-text);
-  margin-bottom: 6px;
+  opacity: 0.8;
+}
+
+.detail-value {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-color);
 }
 
 .weather-card-location {
   font-size: 0.7rem;
   color: var(--secondary-text);
   opacity: 0.7;
-  margin-bottom: 10px;
 }
 
 .weather-card-forecast {
-  border-top: 1px solid var(--border-color);
   padding-top: 10px;
 }
 
-.weather-card-forecast-title {
-  font-size: 0.7rem;
-  color: var(--secondary-text);
-  margin-bottom: 6px;
-}
-
 .weather-card-forecast-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: 54px 28px 1fr 60px;
   align-items: center;
-  gap: 8px;
-  padding: 4px 0;
-  font-size: 0.75rem;
+  gap: 6px;
+  padding: 5px 0;
+  font-size: 0.8rem;
 }
 
 .forecast-date {
-  min-width: 50px;
   color: var(--text-color);
+  font-weight: 500;
 }
 
 .forecast-icon {
-  font-size: 0.9rem;
-}
-
-.forecast-temp {
-  min-width: 80px;
-  color: var(--text-color);
+  font-size: 1rem;
+  text-align: center;
 }
 
 .forecast-desc {
   color: var(--secondary-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.forecast-temp {
+  text-align: right;
+  font-weight: 500;
+  color: var(--text-color);
+  white-space: nowrap;
+}
+
+.forecast-temp-divider {
+  color: var(--secondary-text);
+  opacity: 0.5;
+  margin: 0 1px;
 }
 
 .weather-hourly {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border-color, rgba(0,0,0,0.06));
-}
-
-.weather-hourly-title {
-  font-size: 0.7rem;
-  color: var(--secondary-text, #666);
-  margin-bottom: 6px;
-  font-weight: 500;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--almanac-line);
 }
 
 .weather-hourly-scroll {
   display: flex;
   overflow-x: auto;
-  gap: 12px;
-  padding-bottom: 4px;
+  gap: 10px;
+  padding: 4px 2px;
   scrollbar-width: thin;
 }
 
@@ -3103,7 +3187,7 @@ watch(activeThemeConfig, () => {
 }
 
 .weather-hourly-scroll::-webkit-scrollbar-thumb {
-  background: rgba(0,0,0,0.15);
+  background: var(--scrollbar-thumb);
   border-radius: 2px;
 }
 
@@ -3111,26 +3195,26 @@ watch(activeThemeConfig, () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  min-width: 40px;
+  gap: 3px;
+  min-width: 38px;
   flex-shrink: 0;
 }
 
 .hourly-time {
   font-size: 0.65rem;
-  color: var(--secondary-text, #888);
+  color: var(--secondary-text);
   white-space: nowrap;
 }
 
 .hourly-icon {
-  font-size: 0.9rem;
+  font-size: 1rem;
   line-height: 1.2;
 }
 
 .hourly-temp {
-  font-size: 0.7rem;
-  font-weight: 500;
-  color: var(--text-color, #333);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-color);
 }
 
 /* 黄历详情中的节日显示 */
@@ -3152,14 +3236,14 @@ watch(activeThemeConfig, () => {
   cursor: pointer;
   transition: all 0.2s;
   border: 1px solid var(--primary-color);
-  background: color-mix(in srgb, var(--primary-color) 15%, transparent);
+  background: var(--festival-item-bg);
   color: var(--accent-color);
 }
 
 .festival-item:hover {
   transform: scale(1.05);
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  background: color-mix(in srgb, var(--primary-color) 25%, transparent);
+  background: var(--festival-item-hover-bg);
 }
 
 /* 节日类型标签 - 统一使用主题色（在 .festival-item 中定义） */
@@ -3297,7 +3381,7 @@ watch(activeThemeConfig, () => {
   font-size: 0.65rem;
   padding: 1px 6px;
   border-radius: 4px;
-  background: color-mix(in srgb, var(--primary-color) 20%, transparent);
+  background: var(--festival-item-type-bg);
   color: var(--accent-color);
 }
 
@@ -3373,7 +3457,7 @@ watch(activeThemeConfig, () => {
   padding: 2px 6px;
   border-radius: 8px;
   white-space: nowrap;
-  background: color-mix(in srgb, var(--primary-color) 20%, transparent);
+  background: var(--festival-card-type-bg);
   color: var(--accent-color);
 }
 
