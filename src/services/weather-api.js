@@ -3,9 +3,8 @@
  * 参考 breezy-weather 项目 ChinaApi.kt 设计
  */
 
-const BASE_URL = import.meta.env.DEV
-  ? '/api/weather/'
-  : 'https://weatherapi.market.xiaomi.com/wtr-v3/'
+// dev: Vite proxy → /api/weather/; prod: EdgeOne Edge Function → /api/weather/
+const BASE_URL = '/api/weather/'
 const CHINA_APP_KEY = 'weather20151024'
 const CHINA_SIGN = 'zUFJoAR2ZVrDy1vF3D07'
 
