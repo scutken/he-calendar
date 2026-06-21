@@ -37,4 +37,5 @@ output/playwright/
 # Qoder skills
 .agents/
 skills-lock.json
+.slim
   
