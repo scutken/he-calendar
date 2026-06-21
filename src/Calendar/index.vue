@@ -1056,7 +1056,10 @@ const almanacInfo = computed(() => {
 // 十二时辰吉凶
 // ============================================================
 
-const hoveredShichen = ref(-1);
+const activeShichen = ref(-1);
+const toggleShichen = (idx) => {
+  activeShichen.value = activeShichen.value === idx ? -1 : idx;
+};
 
 const shichenNames = ['子时', '丑时', '寅时', '卯时', '辰时', '巳时', '午时', '未时', '申时', '酉时', '戌时', '亥时'];
 const shichenTimeRanges = ['23:00-01:00', '01:00-03:00', '03:00-05:00', '05:00-07:00', '07:00-09:00', '09:00-11:00', '11:00-13:00', '13:00-15:00', '15:00-17:00', '17:00-19:00', '19:00-21:00', '21:00-23:00'];
@@ -1447,7 +1450,7 @@ watch(activeThemeConfig, () => {
 </script>
 
 <template>
-  <div class="calendar-container" :class="['theme-' + currentTheme, isDarkMode ? 'dark-mode' : 'light-mode']" :data-mode="isDarkMode ? 'dark' : 'light'" @wheel.prevent="handleScroll">
+  <div class="calendar-container" :class="['theme-' + currentTheme, isDarkMode ? 'dark-mode' : 'light-mode']" :data-mode="isDarkMode ? 'dark' : 'light'">
     <!-- Header -->
     <header class="calendar-header">
       <div class="current-info" @click.stop>
@@ -1543,7 +1546,7 @@ watch(activeThemeConfig, () => {
         </div>
         
         <!-- Year Picker Dropdown -->
-        <div v-if="showYearPicker" class="picker-dropdown year-picker" @click.stop>
+        <div v-if="showYearPicker" class="picker-dropdown year-picker" @click.stop @wheel.prevent="handleScroll">
           <div 
             v-for="year in years" 
             :key="year" 
@@ -1794,7 +1797,7 @@ watch(activeThemeConfig, () => {
 
     <div class="main-content">
       <!-- Calendar Grid -->
-      <div class="calendar-grid-wrapper">
+      <div class="calendar-grid-wrapper" @wheel.prevent="handleScroll">
         <div class="week-header">
           <div v-for="w in weekDays" :key="w" class="week-day">{{ w }}</div>
         </div>
@@ -1892,29 +1895,28 @@ watch(activeThemeConfig, () => {
                 v-for="(sc, idx) in shichenInfo" 
                 :key="sc.name" 
                 class="shichen-tag"
-                :class="{ 'is-ji': sc.isYellowRoad, 'is-xiong': !sc.isYellowRoad, 'is-current': sc.isCurrent, 'is-active': hoveredShichen === idx }"
-                @mouseenter="hoveredShichen = idx"
-                @mouseleave="hoveredShichen = -1"
+                :class="{ 'is-ji': sc.isYellowRoad, 'is-xiong': !sc.isYellowRoad, 'is-current': sc.isCurrent, 'is-active': activeShichen === idx }"
+                @click="toggleShichen(idx)"
               >{{ sc.name[0] }}{{ sc.luck }}</span>
             </div>
-            <transition name="shichen-detail-fade">
-              <div v-if="hoveredShichen >= 0" class="shichen-detail" :key="hoveredShichen">
+            <transition name="shichen-detail-fade" mode="out-in">
+              <div v-if="activeShichen >= 0" class="shichen-detail" :key="activeShichen">
                 <div class="shichen-detail-header">
-                  <span class="shichen-detail-name">{{ shichenInfo[hoveredShichen].name }}</span>
-                  <span class="shichen-detail-time">{{ shichenInfo[hoveredShichen].timeRange }}</span>
-                  <span class="shichen-detail-luck" :class="{ 'is-ji': shichenInfo[hoveredShichen].isYellowRoad, 'is-xiong': !shichenInfo[hoveredShichen].isYellowRoad }">{{ shichenInfo[hoveredShichen].isYellowRoad ? '黄道' : '黑道' }}</span>
+                  <span class="shichen-detail-name">{{ shichenInfo[activeShichen].name }}</span>
+                  <span class="shichen-detail-time">{{ shichenInfo[activeShichen].timeRange }}</span>
+                  <span class="shichen-detail-luck" :class="{ 'is-ji': shichenInfo[activeShichen].isYellowRoad, 'is-xiong': !shichenInfo[activeShichen].isYellowRoad }">{{ shichenInfo[activeShichen].isYellowRoad ? '黄道' : '黑道' }}</span>
                 </div>
                 <div class="shichen-detail-body">
-                  <span class="shichen-detail-item"><span class="shichen-detail-label">干支</span>{{ shichenInfo[hoveredShichen].ganZhi }}</span>
-                  <span class="shichen-detail-item"><span class="shichen-detail-label">神煞</span>{{ shichenInfo[hoveredShichen].god }}</span>
+                  <span class="shichen-detail-item"><span class="shichen-detail-label">干支</span>{{ shichenInfo[activeShichen].ganZhi }}</span>
+                  <span class="shichen-detail-item"><span class="shichen-detail-label">神煞</span>{{ shichenInfo[activeShichen].god }}</span>
                 </div>
-                <div v-if="shichenInfo[hoveredShichen].recommends.length" class="shichen-detail-row is-yi">
+                <div v-if="shichenInfo[activeShichen].recommends.length" class="shichen-detail-row is-yi">
                   <span class="shichen-detail-label">宜</span>
-                  <span>{{ shichenInfo[hoveredShichen].recommends.join(' ') }}</span>
+                  <span>{{ shichenInfo[activeShichen].recommends.join(' ') }}</span>
                 </div>
-                <div v-if="shichenInfo[hoveredShichen].avoids.length" class="shichen-detail-row is-ji">
+                <div v-if="shichenInfo[activeShichen].avoids.length" class="shichen-detail-row is-ji">
                   <span class="shichen-detail-label">忌</span>
-                  <span>{{ shichenInfo[hoveredShichen].avoids.join(' ') }}</span>
+                  <span>{{ shichenInfo[activeShichen].avoids.join(' ') }}</span>
                 </div>
               </div>
             </transition>
@@ -2466,8 +2468,26 @@ watch(activeThemeConfig, () => {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  scrollbar-gutter: stable;
+  overflow-anchor: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb, rgba(0,0,0,0.12)) transparent;
   --almanac-shadow: 0 2px 6px var(--almanac-shadow-color);
+}
+
+/* 黄历面板滚动条样式 */
+.almanac-panel::-webkit-scrollbar {
+  width: 4px;
+}
+.almanac-panel::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb, rgba(0,0,0,0.12));
+  border-radius: 2px;
+}
+.almanac-panel::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .almanac-header {
@@ -2671,7 +2691,7 @@ watch(activeThemeConfig, () => {
   padding: 6px 0 7px;
   border-radius: 0;
   line-height: 1.28;
-  cursor: default;
+  cursor: pointer;
   transition: background-color 0.15s ease, color 0.15s ease;
   border: none;
   background: var(--panel-bg);
@@ -3049,12 +3069,17 @@ watch(activeThemeConfig, () => {
   to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
+.weather-card {
+  scrollbar-color: var(--scrollbar-thumb, rgba(0,0,0,0.1)) transparent;
+  scrollbar-width: thin;
+}
+
 .weather-card::-webkit-scrollbar {
   width: 3px;
 }
 
 .weather-card::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
+  background: var(--scrollbar-thumb, rgba(0,0,0,0.1));
   border-radius: 2px;
 }
 
@@ -3180,6 +3205,7 @@ watch(activeThemeConfig, () => {
   gap: 10px;
   padding: 4px 2px;
   scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb, rgba(0,0,0,0.1)) transparent;
 }
 
 .weather-hourly-scroll::-webkit-scrollbar {
@@ -3187,7 +3213,7 @@ watch(activeThemeConfig, () => {
 }
 
 .weather-hourly-scroll::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
+  background: var(--scrollbar-thumb, rgba(0,0,0,0.1));
   border-radius: 2px;
 }
 

@@ -25,6 +25,11 @@ body,
 }
 
 /* Scrollbar Style */
+html {
+  scrollbar-color: var(--scrollbar-thumb, rgba(0, 0, 0, 0.1)) transparent;
+  scrollbar-width: thin;
+}
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -41,5 +46,39 @@ body,
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover, rgba(0, 0, 0, 0.2));
+}
+
+/* uTools WebView 滚动条兼容：显式颜色 + 强制显示 */
+body.is-utools {
+  scrollbar-color: auto;
+}
+
+.is-utools ::-webkit-scrollbar {
+  width: 8px !important;
+  height: 8px !important;
+}
+
+.is-utools ::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.06) !important;
+  border-radius: 4px !important;
+}
+
+.is-utools ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2) !important;
+  border-radius: 4px !important;
+}
+
+.is-utools ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.35) !important;
+}
+
+.is-utools .weather-card,
+.is-utools .weather-hourly-scroll {
+  scrollbar-width: auto !important;
+  scrollbar-color: auto !important;
+}
+
+.is-utools .weather-card {
+  overflow-y: scroll !important;
 }
 
