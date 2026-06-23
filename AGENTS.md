@@ -12,3 +12,22 @@
   1. 普通浏览器 dev 页面
   2. uTools 插件开发模式页面
   3. `npm run build` 构建结果
+
+## API / 运行时双环境约束
+
+- `uTools` Electron WebView **不限制 CORS**，可直接请求外部 API；普通浏览器严格限制 CORS。
+- 涉及外部 API 请求时，必须在 API 封装层做**运行时环境检测**：
+  `window.utools` 存在 → 直连上游 API；否则 → 走 `/api/` 代理（EdgeOne Edge Function 或 Vite dev proxy）。
+- 每次改动 API 层（BASE_URL、请求参数、代理配置）后，必须同时验证：
+  1. `npm run dev` 本地浏览器
+  2. uTools 插件开发模式
+  3. `npm run build` 构建后在 Web 端部署验证
+
+## 版本发布检查清单
+
+升级版本号时需同步以下 **5 个文件**，缺一不可：
+- `package.json` → `version`
+- `src/config.js` → `version`
+- `版本说明.txt` → 新增版本条目
+- `应用说明.txt` → 新功能描述（如功能有增减）
+- `README.md` → 核心特色 / 技术栈 / 关键词（如功能有增减）
