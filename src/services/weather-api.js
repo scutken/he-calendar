@@ -3,8 +3,12 @@
  * 参考 breezy-weather 项目 ChinaApi.kt 设计
  */
 
-// dev: Vite proxy → /api/weather/; prod: EdgeOne Edge Function → /api/weather/
-const BASE_URL = '/api/weather/'
+// uTools Electron WebView 不限制 CORS，直接请求小米 API
+// Web 环境通过 /api/weather/ 代理（EdgeOne Edge Function 或 Vite dev proxy）
+const isUtoolsEnv = typeof window !== 'undefined' && !!window.utools
+const BASE_URL = isUtoolsEnv
+  ? 'https://weatherapi.market.xiaomi.com/wtr-v3/'
+  : '/api/weather/'
 const CHINA_APP_KEY = 'weather20151024'
 const CHINA_SIGN = 'zUFJoAR2ZVrDy1vF3D07'
 
