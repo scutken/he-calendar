@@ -611,16 +611,38 @@ const weekDays = computed(() => {
   return days;
 });
 
-const nextMonth = () => {
-  currentMonth.value = currentMonth.value.add(1, 'month');
+// 月份切换的过渡动画方向
+// 'slide-up/down' 竖向翻页（滚轮），'slide-left/right' 横向翻页（箭头），'month-fade' 跳转
+const transitionName = ref('slide-up');
+
+// 统一的月份切换入口：delta 为月份增量，axis 决定滑动轴向（'v' 上下 / 'h' 左右）
+const goMonth = (delta, axis = 'v') => {
+  if (delta === 0) return;
+  if (axis === 'h') {
+    transitionName.value = delta > 0 ? 'slide-left' : 'slide-right';
+  } else {
+    transitionName.value = delta > 0 ? 'slide-up' : 'slide-down';
+  }
+  currentMonth.value = currentMonth.value.add(delta, 'month');
 };
 
-const prevMonth = () => {
-  currentMonth.value = currentMonth.value.subtract(1, 'month');
+// 跳转到任意月份（无方向语义，使用淡入淡出）
+const jumpMonth = (updater) => {
+  transitionName.value = 'month-fade';
+  updater();
+};
+
+const nextMonth = () => goMonth(1, 'h');
+const prevMonth = () => goMonth(-1, 'h');
+
+const goToday = () => {
+  transitionName.value = 'month-fade';
+  currentMonth.value = dayjs();
+  selectedDate.value = dayjs();
 };
 
 const selectYear = (year) => {
-  currentMonth.value = currentMonth.value.year(year);
+  jumpMonth(() => { currentMonth.value = currentMonth.value.year(year); });
   showYearPicker.value = false;
   
   // 下次打开时，定位到选中年份的页，并且选中年份在中间
@@ -628,7 +650,7 @@ const selectYear = (year) => {
 };
 
 const selectMonth = (monthValue) => {
-  currentMonth.value = currentMonth.value.month(monthValue);
+  jumpMonth(() => { currentMonth.value = currentMonth.value.month(monthValue); });
   showMonthPicker.value = false;
 };
 
@@ -996,9 +1018,9 @@ const handleScroll = (e) => {
   lastMonthChangeTime = now;
 
   if (direction > 0) {
-    nextMonth();
+    goMonth(1, 'v');
   } else {
-    prevMonth();
+    goMonth(-1, 'v');
   }
 };
 
@@ -1585,7 +1607,7 @@ watch(activeThemeConfig, () => {
       </div>
       <div class="actions">
         <button @click="prevMonth" class="icon-btn"><ChevronLeft :size="20" /></button>
-        <button @click="currentMonth = dayjs(); selectedDate = dayjs()" class="text-btn">今天</button>
+        <button @click="goToday" class="text-btn">今天</button>
         <button @click="nextMonth" class="icon-btn"><ChevronRight :size="20" /></button>
         
         <div class="festival-list-wrapper">
@@ -1815,27 +1837,31 @@ watch(activeThemeConfig, () => {
         <div class="week-header">
           <div v-for="w in weekDays" :key="w" class="week-day">{{ w }}</div>
         </div>
-        <div class="grid">
-          <div 
-            v-for="day in calendarDays" 
-            :key="day.date.toString()" 
-            class="day-cell"
-            :class="{ 
-              'other-month': !day.isCurrentMonth, 
-              'today': day.isToday,
-              'selected': day.isSelected,
-              'weekend': day.date.day() === 0 || day.date.day() === 6
-            }"
-            @click="selectDate(day)"
-          >
-            <div class="solar-day">{{ day.date.date() }}</div>
-            <div class="lunar-day" :class="{ 'festival': day.displayFestival }">
-              {{ day.displayFestival || day.lunarText }}
+        <div class="grid-stage">
+          <Transition :name="transitionName">
+            <div class="grid" :key="currentMonth.format('YYYY-MM')">
+              <div 
+                v-for="day in calendarDays" 
+                :key="day.date.toString()" 
+                class="day-cell"
+                :class="{ 
+                  'other-month': !day.isCurrentMonth, 
+                  'today': day.isToday,
+                  'selected': day.isSelected,
+                  'weekend': day.date.day() === 0 || day.date.day() === 6
+                }"
+                @click="selectDate(day)"
+              >
+                <div class="solar-day">{{ day.date.date() }}</div>
+                <div class="lunar-day" :class="{ 'festival': day.displayFestival }">
+                  {{ day.displayFestival || day.lunarText }}
+                </div>
+                <div v-if="day.holiday" class="holiday-tag" :class="day.holiday.isWork ? 'work' : 'rest'">
+                  {{ day.holiday.isWork ? '班' : '休' }}
+                </div>
+              </div>
             </div>
-            <div v-if="day.holiday" class="holiday-tag" :class="day.holiday.isWork ? 'work' : 'rest'">
-              {{ day.holiday.isWork ? '班' : '休' }}
-            </div>
-          </div>
+          </Transition>
         </div>
       </div>
 
@@ -2385,12 +2411,65 @@ watch(activeThemeConfig, () => {
   color: var(--primary-color);
 }
 
+.grid-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .grid {
+  position: absolute;
+  inset: 0;
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   grid-template-rows: repeat(6, 1fr);
-  flex: 1;
   gap: 4px;
+}
+
+/* 月份翻页过渡：仿 macOS 日历的滑动翻页 */
+/* 竖向（滚轮）：更柔和、稍长，留出起势与回落 */
+.slide-up-enter-active,
+.slide-up-leave-active,
+.slide-down-enter-active,
+.slide-down-leave-active {
+  transition: transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: transform;
+}
+
+/* 横向（箭头）：略快，离散操作更利落 */
+.slide-left-enter-active,
+.slide-left-leave-active,
+.slide-right-enter-active,
+.slide-right-leave-active {
+  transition: transform 0.4s cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: transform;
+}
+
+/* 竖向：下一月向上滑出 */
+.slide-up-enter-from { transform: translateY(100%); }
+.slide-up-leave-to { transform: translateY(-100%); }
+
+/* 竖向：上一月向下滑出 */
+.slide-down-enter-from { transform: translateY(-100%); }
+.slide-down-leave-to { transform: translateY(100%); }
+
+/* 横向：下一月向左滑出 */
+.slide-left-enter-from { transform: translateX(100%); }
+.slide-left-leave-to { transform: translateX(-100%); }
+
+/* 横向：上一月向右滑出 */
+.slide-right-enter-from { transform: translateX(-100%); }
+.slide-right-leave-to { transform: translateX(100%); }
+
+/* 跳转（年份/月份选择器、今天按钮）：淡入淡出 */
+.month-fade-enter-active,
+.month-fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+.month-fade-enter-from,
+.month-fade-leave-to {
+  opacity: 0;
 }
 
 .day-cell {
