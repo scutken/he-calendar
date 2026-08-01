@@ -1365,35 +1365,47 @@ const upcomingFestivals = computed(() => {
     });
   }
   
-  // 按月分组
-  const grouped = {};
-  festivals.forEach(f => {
-    if (!grouped[f.monthName]) {
-      grouped[f.monthName] = [];
+  // 拆分为今年和明年
+  const thisYear = today.year();
+  const thisYearFestivals = festivals.filter(f => f.date.year() === thisYear);
+  const nextYearFestivals = festivals.filter(f => f.date.year() !== thisYear);
+  
+  // 按月分组函数
+  const groupByMonth = (list) => {
+    const grouped = {};
+    list.forEach(f => {
+      if (!grouped[f.monthName]) grouped[f.monthName] = [];
+      grouped[f.monthName].push(f);
+    });
+    Object.keys(grouped).forEach(month => {
+      grouped[month].sort((a, b) => a.date.valueOf() - b.date.valueOf());
+    });
+    return grouped;
+  };
+  
+  // 按月排序函数（今年从当前月开始，明年从1月开始）
+  const sortMonths = (grouped, startMonth) => {
+    const sorted = [];
+    for (let i = 0; i < 12; i++) {
+      const monthIndex = (startMonth + i) % 12;
+      const monthName = monthNames[monthIndex];
+      if (grouped[monthName] && grouped[monthName].length > 0) {
+        sorted.push({ month: monthName, festivals: grouped[monthName] });
+      }
     }
-    grouped[f.monthName].push(f);
-  });
+    return sorted;
+  };
   
-  // 对每组内的节日按日期排序
-  Object.keys(grouped).forEach(month => {
-    grouped[month].sort((a, b) => a.date.valueOf() - b.date.valueOf());
-  });
+  const thisYearGrouped = groupByMonth(thisYearFestivals);
+  const nextYearGrouped = groupByMonth(nextYearFestivals);
   
-  // 按月份顺序返回（从当前月份开始）
-  const sortedMonths = [];
-  const currentMonthIndex = today.month();
-  for (let i = 0; i < 12; i++) {
-    const monthIndex = (currentMonthIndex + i) % 12;
-    const monthName = monthNames[monthIndex];
-    if (grouped[monthName] && grouped[monthName].length > 0) {
-      sortedMonths.push({
-        month: monthName,
-        festivals: grouped[monthName]
-      });
-    }
-  }
+  const thisYearSorted = sortMonths(thisYearGrouped, today.month());
+  const nextYearSorted = sortMonths(nextYearGrouped, 0); // 明年从1月开始
   
-  return sortedMonths;
+  return [
+    ...thisYearSorted.map(g => ({ ...g, yearLabel: '今年' })),
+    ...nextYearSorted.map(g => ({ ...g, yearLabel: '明年' }))
+  ];
 });
 
 // 切换节日列表面板
@@ -1607,31 +1619,33 @@ watch(activeThemeConfig, () => {
           <div v-if="showFestivalList" class="festival-list-panel shadow-lg" @click.stop @wheel.stop>
             <div class="festival-list-title">节日倒数</div>
             <div class="festival-list-content">
-              <div v-for="group in upcomingFestivals" :key="group.month" class="festival-month-group">
-                <div class="festival-month-header">{{ group.month }}</div>
-                <div class="festival-month-card">
-                  <div v-for="(festival, idx) in group.festivals" :key="idx" 
-                       class="festival-list-item"
-                       @click="openFestivalCard(festival, $event)">
-                    <div class="festival-item-left">
-                      <div class="festival-item-row">
-                        <span class="festival-item-name">{{ festival.name }}</span>
-                        <span v-if="festival.isRest && festival.restDays > 0" class="festival-rest-badge">
-                          休{{ festival.restDays }}天
-                        </span>
+              <template v-for="(group, gIdx) in upcomingFestivals" :key="group.month + group.yearLabel">
+                <div class="festival-month-group">
+                  <div class="festival-month-header">{{ group.yearLabel === '明年' ? '明年' + group.month : group.month }}</div>
+                  <div class="festival-month-card">
+                    <div v-for="(festival, idx) in group.festivals" :key="idx" 
+                         class="festival-list-item"
+                         @click="openFestivalCard(festival, $event)">
+                      <div class="festival-item-left">
+                        <div class="festival-item-row">
+                          <span class="festival-item-name">{{ festival.name }}</span>
+                          <span v-if="festival.isRest && festival.restDays > 0" class="festival-rest-badge">
+                            休{{ festival.restDays }}天
+                          </span>
+                        </div>
+                        <span class="festival-item-date">{{ festival.dateStr }}</span>
                       </div>
-                      <span class="festival-item-date">{{ festival.dateStr }}</span>
-                    </div>
-                    <div class="festival-item-countdown">
-                      <template v-if="festival.countdown.text">{{ festival.countdown.text }}</template>
-                      <template v-else>
-                        <span class="countdown-num">{{ festival.countdown.num }}</span>
-                        <span class="countdown-unit">{{ festival.countdown.unit }}</span>
-                      </template>
+                      <div class="festival-item-countdown">
+                        <template v-if="festival.countdown.text">{{ festival.countdown.text }}</template>
+                        <template v-else>
+                          <span class="countdown-num">{{ festival.countdown.num }}</span>
+                          <span class="countdown-unit">{{ festival.countdown.unit }}</span>
+                        </template>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+            </template>
             </div>
           </div>
         </div>
@@ -3402,6 +3416,22 @@ watch(activeThemeConfig, () => {
   font-size: 0.7rem;
   font-weight: 600;
   color: var(--secondary-text);
+}
+
+.festival-year-divider {
+  padding: 8px 16px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary, #999);
+  text-align: center;
+  letter-spacing: 2px;
+  border-top: 1px solid var(--border-color, #eee);
+  margin-top: 8px;
+}
+
+.festival-year-divider:first-child {
+  border-top: none;
+  margin-top: 0;
 }
 
 .festival-month-card {
