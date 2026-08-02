@@ -1,6 +1,6 @@
 export const projectConfig = {
   name: '合社日历',
-  version: '1.4.3',
+  version: '1.5.0',
   author: '阿裕Addyu',
   github: 'https://github.com/scutken/he-calendar',
   website: 'https://cal.heshe.tech',
