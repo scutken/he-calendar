@@ -1,12 +1,33 @@
 <script lang="ts" setup>
-import { onMounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 import Calendar from './Calendar/index.vue'
+import TraySettings from './settings/TraySettings.vue'
 
 const route = ref('calendar')
 const enterAction = ref({})
 const isUtools = ref(false)
 
+/** 托盘 helper 的右键菜单点"托盘设置"时会置这个标记（见 src/tray/host.js） */
+const OPEN_SETTINGS_FLAG = 'he-calendar-tray-open-settings'
+let flagTimer = null
+
+function consumeOpenSettingsFlag() {
+  try {
+    if (window.utools?.dbStorage?.getItem?.(OPEN_SETTINGS_FLAG)) {
+      window.utools.dbStorage.setItem(OPEN_SETTINGS_FLAG, false)
+      return true
+    }
+  } catch {
+    /* 忽略 */
+  }
+  return false
+}
+
 onMounted(() => {
+  // 浏览器下用 ?page=tray-settings 直接查看设置页（方便网页端验证，不影响插件）
+  const page = new URLSearchParams(window.location.search).get('page')
+  if (page === 'tray-settings') route.value = 'tray-settings'
+
   if (window.utools) {
     isUtools.value = true
     document.body.classList.add('is-utools')
@@ -14,13 +35,23 @@ onMounted(() => {
       route.value = action.code || 'calendar'
       enterAction.value = action
     })
+    if (consumeOpenSettingsFlag()) route.value = 'tray-settings'
+    // 主窗口已经打开着时，右键菜单的"托盘设置"不会触发 onPluginEnter，所以轮询标记
+    flagTimer = setInterval(() => {
+      if (consumeOpenSettingsFlag()) route.value = 'tray-settings'
+    }, 600)
   }
+})
+
+onUnmounted(() => {
+  if (flagTimer) clearInterval(flagTimer)
 })
 </script>
 
 <template>
   <div class="app-container" :class="{ 'is-utools': isUtools }">
-    <Calendar :enterAction="enterAction"></Calendar>
+    <TraySettings v-if="route === 'tray-settings'" @close="route = 'calendar'" />
+    <Calendar v-else :enterAction="enterAction"></Calendar>
   </div>
 </template>
 

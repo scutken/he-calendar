@@ -7,7 +7,9 @@
   },
   "scripts": {
     "dev": "vite",
+    "prebuild": "node tools/build-tray-helper.mjs",
     "build": "vite build",
+    "build:tray": "node tools/build-tray-helper.mjs --force",
     "preview": "vite preview"
   },
   "dependencies": {

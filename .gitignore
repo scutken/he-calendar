@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# 托盘 helper 的编译产物（源码在 tools/tray-helper/he-tray.cs，由 npm run build 的 prebuild 钩子编译）
+public/helper/*.exe
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
