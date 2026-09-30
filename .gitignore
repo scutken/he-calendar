@@ -1,4 +1,12 @@
-# Logs
+# ========== 依赖与构建产物 ==========
+node_modules
+dist
+dist-ssr
+
+# 托盘 helper 的编译产物（源码在 tools/tray-helper/he-tray.cs，由 npm run build 的 prebuild 钩子编译）
+public/helper/*.exe
+
+# ========== 日志 ==========
 logs
 *.log
 npm-debug.log*
@@ -7,38 +15,41 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# ========== 环境变量 ==========
+# 本地环境变量含密钥，一律不入库；如需模板请提交 .env.example
+.env
+.env.*
+!.env.example
 *.local
 
-# 托盘 helper 的编译产物（源码在 tools/tray-helper/he-tray.cs，由 npm run build 的 prebuild 钩子编译）
-public/helper/*.exe
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-upxs
-
-# Playwright artifacts
+# ========== 测试与部署产物 ==========
 .playwright-cli/
 output/playwright/
 .vercel
 
 # Tencent Cloud EdgeOne
-.env
 .edgeone/*
 .tef_dist/*
 
-# Qoder skills
-.agents/
-skills-lock.json
+# ========== 编辑器与系统文件 ==========
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+Thumbs.db
+desktop.ini
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ========== Python ==========
+# .agents/skills 下的设计技能脚本运行时生成
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# ========== 其他 ==========
 .slim
-  
