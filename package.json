@@ -1,6 +1,6 @@
 {
   "name": "he-calendar",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -14,7 +14,7 @@
     "@cfworker/json-schema": "^4.1.1",
     "dayjs": "^1.11.19",
     "lucide-vue-next": "^0.563.0",
-    "tyme4ts": "^1.4.2",
+    "tyme4ts": "^1.5.5",
     "vue": "^3.5.13"
   },
   "devDependencies": {
