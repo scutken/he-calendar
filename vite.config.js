@@ -26,6 +26,11 @@ const bundlePreload = () => ({
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [vue(), bundlePreload()],
+  build: {
+    rollupOptions: {
+      maxParallelFileOps: 3,
+    },
+  },
   base: './', // 保持相对路径，或者根据仓库名设置为 '/he-calendar/'
   server: {
     proxy: {
