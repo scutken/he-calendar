@@ -4,7 +4,7 @@ import {
   getFestivals,
   searchNextFestival,
   getShichen,
-} from '../../src/shared/calendar-core.js'
+} from '../shared/calendar-core.js'
 
 // ============================================================
 // 工具注册

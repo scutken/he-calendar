@@ -97,11 +97,11 @@ export async function reverseGeocode(lat, lon) {
  * 获取完整天气数据
  * @param {{lat: number, lon: number, locationKey: string, name?: string}} location - 位置信息
  * @returns {Promise<{current: object|null, daily: Array, hourly: Array, locationName: string}>}
- * @throws {WeatherError} 当 locationKey 缺失或请求失败时
+ * @throws {WeatherError} 当经纬度缺失或请求失败时
  */
 export async function fetchWeatherData(location) {
-  if (!location || !location.lat || !location.lon) {
-    throw new WeatherError('缺少经纬度信息', 'NO_LOCATION_KEY')
+  if (!location || !Number.isFinite(location.lat) || !Number.isFinite(location.lon)) {
+    throw new WeatherError('缺少有效的经纬度信息', 'NO_LOCATION_KEY')
   }
 
   let rawData

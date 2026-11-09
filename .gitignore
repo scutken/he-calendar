@@ -10,6 +10,10 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# 开发服务器生成的 CommonJS preload，源文件位于 src/preload/
+public/preload/services.js
+# 设计草稿不参与版本发布
+logo-draft/
 *.local
 
 # Editor directories and files

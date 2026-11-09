@@ -1,24 +1,35 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import { build as esbuild } from 'esbuild'
+import { build as esbuild, context as createEsbuildContext } from 'esbuild'
 import path from 'path'
 
+const preloadEntry = path.resolve('src/preload/services.js')
+const preloadBuildOptions = (outfile, minify) => ({
+  entryPoints: [preloadEntry],
+  bundle: true,
+  platform: 'node',
+  format: 'cjs',
+  minify,
+  outfile,
+  external: ['electron'],
+})
+
 /**
- * Vite 插件：构建完成后用 esbuild 打包 preload 脚本
- * 将 tyme4ts 等依赖内联到单文件，确保 uTools 插件打包后无需 node_modules
+ * 开发和发布都提供 CommonJS preload，避免 uTools 直接执行 ESM 源码。
+ * 依赖内联到单文件，确保插件运行时无需 node_modules。
  */
 const bundlePreload = () => ({
   name: 'bundle-preload',
-  apply: 'build',
+  configureServer: async (server) => {
+    const context = await createEsbuildContext(
+      preloadBuildOptions(path.resolve('public/preload/services.js'), false),
+    )
+    await context.watch()
+    server.httpServer?.once('close', () => context.dispose())
+  },
   closeBundle: async () => {
-    await esbuild({
-      entryPoints: [path.resolve('public/preload/services.js')],
-      bundle: true,
-      platform: 'node',
-      format: 'cjs',
-      outfile: path.resolve('dist/preload/services.js'),
-      external: ['electron'],
-    })
+    // 发布产物压缩；开发产物保留可读性，便于排查工具注册问题
+    await esbuild(preloadBuildOptions(path.resolve('dist/preload/services.js'), true))
     console.log('✅ preload/services.js bundled with tyme4ts')
   },
 })

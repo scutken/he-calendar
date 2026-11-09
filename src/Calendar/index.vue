@@ -7,7 +7,7 @@ import { projectConfig } from '../config';
 import { searchLocations, fetchWeatherData, autoLocateAndFetch, LocationError, WeatherError } from '../services/weather-service.js'
 import { getTempColor } from '../services/weather-models.js'
 
-const props = defineProps(['enterAction']);
+const props = defineProps(['enterAction', 'isPluginActive']);
 
 const currentMonth = ref(dayjs());
 const selectedDate = ref(dayjs());
@@ -719,8 +719,11 @@ const toggleSolarTerms = () => {
 const toggleWeather = () => {
   showWeather.value = !showWeather.value;
   setStorageItem('calendar-show-weather', showWeather.value.toString());
-  if (showWeather.value && !weatherData.value) {
-    fetchWeather();
+  if (showWeather.value) {
+    if (!weatherData.value) fetchWeather();
+    startWeatherAutoRefresh();
+  } else {
+    stopWeatherAutoRefresh();
   }
 };
 
@@ -842,12 +845,36 @@ const fetchWeather = async () => {
   }
 };
 
+const stopWeatherAutoRefresh = () => {
+  if (weatherTimer) {
+    clearInterval(weatherTimer);
+    weatherTimer = null;
+  }
+};
+
+const startWeatherAutoRefresh = () => {
+  stopWeatherAutoRefresh();
+  if (!showWeather.value || props.isPluginActive === false) return;
+  weatherTimer = setInterval(fetchWeather, 30 * 60 * 1000);
+};
+
 // 天气位置搜索
 const locationSearchQuery = ref('');
 const locationSearchResults = ref([]);
 const locationSearching = ref(false);
 const locationInputFocused = ref(false);
 let locationSearchTimer = null;
+let locationSearchRequestId = 0;
+
+const cancelPendingLocationSearch = () => {
+  // 递增序号使已发出的请求失效，避免旧响应覆盖新关键词
+  locationSearchRequestId++;
+  if (locationSearchTimer) {
+    clearTimeout(locationSearchTimer);
+    locationSearchTimer = null;
+  }
+  locationSearching.value = false;
+};
 
 const handleLocationBlur = () => {
   // 延迟关闭，让搜索结果点击事件有时间触发
@@ -857,8 +884,9 @@ const handleLocationBlur = () => {
 };
 
 const searchLocation = (query) => {
+  cancelPendingLocationSearch();
   locationSearchQuery.value = query;
-  if (locationSearchTimer) clearTimeout(locationSearchTimer);
+  const requestId = locationSearchRequestId;
   if (!query || query.length < 2) {
     locationSearchResults.value = [];
     return;
@@ -867,6 +895,7 @@ const searchLocation = (query) => {
     locationSearching.value = true;
     try {
       const results = await searchLocations(query)
+      if (requestId !== locationSearchRequestId) return;
       locationSearchResults.value = results.map(item => ({
         name: item.name,
         path: item.affiliation || '',
@@ -875,14 +904,15 @@ const searchLocation = (query) => {
         lon: item.lon
       }))
     } catch (e) {
-      locationSearchResults.value = [];
+      if (requestId === locationSearchRequestId) locationSearchResults.value = [];
     } finally {
-      locationSearching.value = false;
+      if (requestId === locationSearchRequestId) locationSearching.value = false;
     }
   }, 300);
 };
 
 const selectLocation = async (item) => {
+  cancelPendingLocationSearch();
   const location = {
     name: item.name,
     locationKey: item.locationKey,
@@ -904,6 +934,7 @@ const selectLocation = async (item) => {
 };
 
 const clearLocationSearch = () => {
+  cancelPendingLocationSearch();
   locationSearchQuery.value = '';
   locationSearchResults.value = [];
 };
@@ -1456,6 +1487,17 @@ watch([isDarkMode, activeThemeConfig], () => {
   applyTheme();
 }, { deep: true });
 
+watch(() => props.isPluginActive, (active) => {
+  if (active) {
+    if (showWeather.value) {
+      fetchWeather();
+      startWeatherAutoRefresh();
+    }
+  } else {
+    stopWeatherAutoRefresh();
+  }
+});
+
 onMounted(() => {
   const savedTheme = getStorageItem('calendar-theme', 'auto');
   currentTheme.value = savedTheme;
@@ -1478,14 +1520,16 @@ onMounted(() => {
   if (showWeather.value) {
     fetchWeather();
     // 每30分钟刷新一次天气
-    weatherTimer = setInterval(fetchWeather, 30 * 60 * 1000);
+    startWeatherAutoRefresh();
   }
 });
 
 onUnmounted(() => {
   window.removeEventListener('click', handleGlobalClick);
   darkModeMediaQuery.removeEventListener('change', handleSystemThemeChange);
-  if (weatherTimer) clearInterval(weatherTimer);
+  stopWeatherAutoRefresh();
+  cancelHideWeatherCard();
+  cancelPendingLocationSearch();
 });
 
 // 监听主题变化

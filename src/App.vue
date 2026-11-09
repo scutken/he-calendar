@@ -5,6 +5,7 @@ import Calendar from './Calendar/index.vue'
 const route = ref('calendar')
 const enterAction = ref({})
 const isUtools = ref(false)
+const isPluginActive = ref(true)
 
 onMounted(() => {
   if (window.utools) {
@@ -13,6 +14,11 @@ onMounted(() => {
     window.utools.onPluginEnter((action) => {
       route.value = action.code || 'calendar'
       enterAction.value = action
+      isPluginActive.value = true
+    })
+    window.utools.onPluginOut(() => {
+      // 退到后台不会卸载 Vue 组件，需要主动暂停天气轮询
+      isPluginActive.value = false
     })
   }
 })
@@ -20,7 +26,7 @@ onMounted(() => {
 
 <template>
   <div class="app-container" :class="{ 'is-utools': isUtools }">
-    <Calendar :enterAction="enterAction"></Calendar>
+    <Calendar :enterAction="enterAction" :is-plugin-active="isPluginActive"></Calendar>
   </div>
 </template>
 

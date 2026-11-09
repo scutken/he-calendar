@@ -30,6 +30,7 @@
         "properties": {
           "date": {
             "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
             "description": "公历日期，格式 YYYY-MM-DD，例如 2026-04-01。不传则默认为今天。"
           }
         }
@@ -43,6 +44,7 @@
         "properties": {
           "date": {
             "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
             "description": "公历日期，格式 YYYY-MM-DD，例如 2026-04-01。不传则默认为今天。"
           }
         },
@@ -50,18 +52,20 @@
       }
     },
     "get_festivals": {
-      "description": "查询指定日期范围内的所有节日（含农历传统节日、公历现代节日、国际节日、二十四节气、法定假日）。默认查询从今天起未来30天。",
+      "description": "查询指定日期范围内的所有节日（含农历传统节日、公历现代节日、国际节日、二十四节气、法定假日）。默认查询从今天起未来30天，单次最多查询400天。",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
           "start_date": {
             "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
             "description": "起始日期，格式 YYYY-MM-DD。不传则默认为今天。"
           },
           "end_date": {
             "type": "string",
-            "description": "结束日期，格式 YYYY-MM-DD。不传则默认为起始日期后30天。"
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+            "description": "结束日期，格式 YYYY-MM-DD。不传则默认为起始日期后30天，单次最多查询400天。"
           }
         }
       }
@@ -74,6 +78,7 @@
         "properties": {
           "festival_name": {
             "type": "string",
+            "minLength": 1,
             "description": "节日或节气名称，支持部分匹配，例如「中秋」「春节」「母亲节」「冬至」"
           }
         },
@@ -88,6 +93,7 @@
         "properties": {
           "date": {
             "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
             "description": "公历日期，格式 YYYY-MM-DD，例如 2026-04-01。不传则默认为今天。"
           }
         }

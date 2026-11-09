@@ -5,19 +5,20 @@ import {
 } from 'tyme4ts'
 
 export function parseDate(dateStr) {
-  if (dateStr) {
-    const m = dateStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
-    if (!m) throw new Error('日期格式必须为 YYYY-MM-DD')
-    const parsed = { year: +m[1], month: +m[2], day: +m[3] }
-    const actual = new Date(parsed.year, parsed.month - 1, parsed.day)
-    const isValid = actual.getFullYear() === parsed.year
-      && actual.getMonth() + 1 === parsed.month
-      && actual.getDate() === parsed.day
-    if (!isValid) throw new Error('日期不存在，请检查年月日是否正确')
-    return parsed
+  if (dateStr === undefined || dateStr === null) {
+    const now = new Date()
+    return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() }
   }
-  const now = new Date()
-  return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() }
+  if (typeof dateStr !== 'string') throw new Error('日期格式必须为 YYYY-MM-DD')
+  const m = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!m) throw new Error('日期格式必须为 YYYY-MM-DD')
+  const parsed = { year: +m[1], month: +m[2], day: +m[3] }
+  const actual = new Date(parsed.year, parsed.month - 1, parsed.day)
+  const isValid = actual.getFullYear() === parsed.year
+    && actual.getMonth() + 1 === parsed.month
+    && actual.getDate() === parsed.day
+  if (!isValid) throw new Error('日期不存在，请检查年月日是否正确')
+  return parsed
 }
 
 export function addDays(year, month, day, n) {
@@ -258,16 +259,22 @@ export function getAlmanac({ date } = {}) {
 export function getFestivals({ start_date, end_date } = {}) {
   const start = parseDate(start_date)
   let end
-  if (end_date) {
+  if (end_date !== undefined && end_date !== null) {
     end = parseDate(end_date)
   }
   if (!end) end = addDays(start.year, start.month, start.day, 30)
 
+  const startTs = Date.UTC(start.year, start.month - 1, start.day)
+  const endTs = Date.UTC(end.year, end.month - 1, end.day)
+  if (endTs < startTs) throw new Error('结束日期不能早于起始日期')
+  // 工具逐日同步计算，限制跨度避免超长区间阻塞插件进程
+  if (endTs - startTs >= 400 * 86400000) throw new Error('日期范围一次最多查询 400 天')
+
   const results = []
   let cur = { ...start }
-  const endTs = new Date(end.year, end.month - 1, end.day).getTime()
+  const endLocalTs = new Date(end.year, end.month - 1, end.day).getTime()
 
-  while (new Date(cur.year, cur.month - 1, cur.day).getTime() <= endTs) {
+  while (new Date(cur.year, cur.month - 1, cur.day).getTime() <= endLocalTs) {
     const festivals = collectFestivals(cur.year, cur.month, cur.day)
     if (festivals.length > 0) {
       const today = new Date()
@@ -293,7 +300,9 @@ export function getFestivals({ start_date, end_date } = {}) {
 }
 
 export function searchNextFestival({ festival_name } = {}) {
-  if (!festival_name) throw new Error('必须提供 festival_name 参数')
+  if (typeof festival_name !== 'string' || !festival_name.trim()) {
+    throw new Error('必须提供非空的 festival_name 参数')
+  }
 
   const keyword = festival_name.trim()
   const today = new Date()
