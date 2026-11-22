@@ -35,6 +35,7 @@ onMounted(() => {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
+  overflow: clip;
 }
 
 /* 响应式布局 - 大屏幕卡片化 */
