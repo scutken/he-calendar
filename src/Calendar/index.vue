@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import dayjs from 'dayjs';
 import { SolarDay, LunarDay, SolarTerm, LegalHoliday, SolarFestival, LunarFestival, Taboo, PengZu, FetusDay } from 'tyme4ts';
-import { ChevronLeft, ChevronRight, Palette, Settings, Github, ExternalLink, User, Sun, Moon, Monitor, CalendarDays, CloudSun, MapPin, LocateFixed } from 'lucide-vue-next';
+import { ChevronLeft, ChevronRight, Palette, Settings, Github, ExternalLink, User, Sun, Moon, Monitor, CalendarDays, CloudSun, MapPin, LocateFixed, X } from 'lucide-vue-next';
 import { projectConfig } from '../config';
 import { searchLocations, fetchWeatherData, autoLocateAndFetch, LocationError, WeatherError } from '../services/weather-service.js'
 import { getTempColor } from '../services/weather-models.js'
@@ -708,44 +708,78 @@ const toggleSolarTerms = () => {
 const toggleWeather = () => {
   showWeather.value = !showWeather.value;
   setStorageItem('calendar-show-weather', showWeather.value.toString());
-  if (showWeather.value && !weatherData.value) {
+  if (showWeather.value) {
     fetchWeather();
   }
 };
 
-// 天气数据
-const weatherData = ref(null);
-const weatherLoading = ref(false);
-const weatherError = ref('');
-const weatherLocatedName = ref(''); // 自动定位到的地点名称
+// 天气数据（多城市支持）
+const weatherLocations = ref([])        // [{name, locationKey, lat, lon}]
+const weatherDataMap = ref({})          // { [locKey]: mapWeatherData 结果 }
+const activeLocationKey = ref('')       // 当前激活城市 key
+const weatherLoading = ref(false)
+const weatherError = ref('')
+
+// 多城市天气切换过渡状态（保留旧数据显示，解决切换闪烁）
+const displayWeatherKey = ref('')       // 当前实际显示在卡片/摘要中的城市 key
+const displayWeatherData = ref(null)    // 当前实际显示的数据（切换期间保留旧数据，避免闪烁）
+const weatherTransitionName = ref('weather-slide-left')
+let weatherSwitchId = 0                 // 切换并发控制
+const weatherTouchStartX = ref(0)       // 触摸起始 X
+
 let weatherTimer = null;
 const showWeatherCard = ref(false);
 let weatherCardTimer = null;
 
-// 天气位置存储辅助函数
-const getSavedWeatherLocation = () => {
+// 统一的城市 key（map 键一律字符串化）
+const locKey = (loc) => String(loc?.locationKey ?? `${loc?.lat}_${loc?.lon}`);
+
+// 当前激活城市的天气数据（模板中 weatherData.xxx 引用保持不变）
+const weatherData = computed(() => weatherDataMap.value[activeLocationKey.value] || null);
+// 当前激活城市（找不到时回退到第一个）
+const activeLocation = computed(() => weatherLocations.value.find(l => locKey(l) === activeLocationKey.value) || weatherLocations.value[0] || null);
+// 自动定位到的地点名称（取激活城市数据中的 locationName）
+const weatherLocatedName = computed(() => weatherData.value?.locationName || '');
+
+// 天气位置存储辅助函数（多城市：数组格式）
+const getSavedWeatherLocations = () => {
   try {
     const raw = isUtools.value
       ? window.utools?.dbStorage?.getItem('calendar-weather-location')
       : localStorage.getItem('calendar-weather-location')
-    return raw ? JSON.parse(raw) : null
-  } catch { return null }
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    // 兼容旧格式：单个对象自动升级为数组
+    if (Array.isArray(parsed)) return parsed
+    if (parsed && parsed.locationKey) return [parsed]
+    return []
+  } catch { return [] }
 };
 
-const saveWeatherLocation = (location) => {
-  if (!location) {
-    if (isUtools.value) {
-      window.utools?.dbStorage?.removeItem('calendar-weather-location')
-    } else {
-      localStorage.removeItem('calendar-weather-location')
-    }
-    return
-  }
-  const json = JSON.stringify(location)
+const saveWeatherLocations = (list) => {
+  const json = JSON.stringify(list || [])
   if (isUtools.value) {
     window.utools?.dbStorage?.setItem('calendar-weather-location', json)
   } else {
     localStorage.setItem('calendar-weather-location', json)
+  }
+};
+
+// 激活城市 key 存储辅助函数（双环境；空/未保存返回 ''）
+const getSavedActiveKey = () => {
+  try {
+    return isUtools.value
+      ? (window.utools?.dbStorage?.getItem('calendar-weather-active-key') || '')
+      : (localStorage.getItem('calendar-weather-active-key') || '')
+  } catch { return '' }
+};
+
+const saveActiveKey = (key) => {
+  const value = key || ''
+  if (isUtools.value) {
+    window.utools?.dbStorage?.setItem('calendar-weather-active-key', value)
+  } else {
+    localStorage.setItem('calendar-weather-active-key', value)
   }
 };
 
@@ -773,6 +807,57 @@ const formatForecastDate = (dateStr) => {
   return weekdays[target.day()];
 };
 
+// 将显示层同步到当前激活城市（用于删除城市、初始化等场景）
+const syncDisplayWeather = () => {
+  const key = activeLocationKey.value;
+  displayWeatherKey.value = key;
+  displayWeatherData.value = weatherDataMap.value[key] || null;
+};
+
+// 监听当前激活城市的数据更新，保持显示层同步
+watch(() => weatherDataMap.value[activeLocationKey.value], (data) => {
+  if (data && activeLocationKey.value === displayWeatherKey.value) {
+    displayWeatherData.value = data;
+  }
+});
+
+// 触摸手势切换城市
+const onWeatherTouchStart = (e) => {
+  if (e.target.closest('.weather-hourly-scroll') || e.target.closest('.weather-city-tabs')) return;
+  weatherTouchStartX.value = e.changedTouches[0].clientX;
+};
+const onWeatherTouchEnd = (e) => {
+  if (e.target.closest('.weather-hourly-scroll') || e.target.closest('.weather-city-tabs')) return;
+  const endX = e.changedTouches[0].clientX;
+  const diff = weatherTouchStartX.value - endX;
+  if (diff > 50) switchNextCity();
+  else if (diff < -50) switchPrevCity();
+};
+
+// 滚轮横向切换城市（仅在明显水平滚动时响应，保留纵向滚动）
+const onWeatherWheel = (e) => {
+  if (e.target.closest('.weather-hourly-scroll') || e.target.closest('.weather-city-tabs')) return;
+  if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && Math.abs(e.deltaX) > 40) {
+    e.preventDefault();
+    if (e.deltaX > 0) switchNextCity();
+    else switchPrevCity();
+  }
+};
+
+const switchPrevCity = () => {
+  if (weatherLocations.value.length <= 1) return;
+  const currentIdx = weatherLocations.value.findIndex(l => locKey(l) === activeLocationKey.value);
+  const prevIdx = currentIdx <= 0 ? weatherLocations.value.length - 1 : currentIdx - 1;
+  switchWeatherCity(locKey(weatherLocations.value[prevIdx]), 'right');
+};
+
+const switchNextCity = () => {
+  if (weatherLocations.value.length <= 1) return;
+  const currentIdx = weatherLocations.value.findIndex(l => locKey(l) === activeLocationKey.value);
+  const nextIdx = currentIdx >= weatherLocations.value.length - 1 ? 0 : currentIdx + 1;
+  switchWeatherCity(locKey(weatherLocations.value[nextIdx]), 'left');
+};
+
 // 数据转换：将 service 层返回的天气数据映射为组件内部格式
 const mapWeatherData = (data) => ({
   temp: data.current?.temp,
@@ -798,24 +883,45 @@ const mapWeatherData = (data) => ({
   }))
 });
 
+// 拉取单个城市的天气并写入 weatherDataMap
+const fetchWeatherFor = async (location) => {
+  const data = await fetchWeatherData(location)
+  const mapped = mapWeatherData(data)
+  weatherDataMap.value[locKey(location)] = mapped
+  return mapped
+};
+
 const fetchWeather = async () => {
   if (!showWeather.value) return;
   weatherLoading.value = true;
   weatherError.value = '';
   try {
-    const savedLocation = getSavedWeatherLocation()
-
-    if (savedLocation && savedLocation.locationKey) {
-      // 有已保存位置，直接获取天气
-      const data = await fetchWeatherData(savedLocation)
-      weatherData.value = mapWeatherData(data)
-      weatherLocatedName.value = data.locationName
-    } else if (!isUtools.value) {
-      // 网页版：自动定位
+    if (weatherLocations.value.length === 0) {
+      // 内存列表为空：先从存储恢复已保存城市，避免自动定位/空提示覆盖用户已保存的数据
+      const saved = getSavedWeatherLocations()
+      if (saved.length > 0) {
+        weatherLocations.value = saved
+        // 优先恢复持久化的激活城市；不存在则回退到第一个
+        const savedActiveKey = getSavedActiveKey()
+        const target = saved.find(l => locKey(l) === savedActiveKey) || saved[0]
+        activeLocationKey.value = locKey(target)
+        syncDisplayWeather()
+        await fetchWeatherFor(target)
+        return
+      }
+      // 没有已添加城市：网页版自动定位，uTools 环境直接返回（顶部显示"搜索城市以开启天气"提示）
+      if (isUtools.value) return;
       const result = await autoLocateAndFetch()
-      weatherData.value = mapWeatherData(result.weatherData)
-      saveWeatherLocation(result.location)
-      weatherLocatedName.value = result.weatherData.locationName
+      const location = result.location
+      weatherLocations.value = [{ ...location }]
+      activeLocationKey.value = locKey(location)
+      saveWeatherLocations(weatherLocations.value)
+      syncDisplayWeather()
+      await fetchWeatherFor(location)
+    } else if (!weatherDataMap.value[activeLocationKey.value]) {
+      // 有已保存城市但当前激活城市还没有数据，直接获取
+      const target = activeLocation.value || weatherLocations.value[0]
+      await fetchWeatherFor(target)
     }
   } catch (err) {
     console.warn('获取天气失败:', err)
@@ -829,6 +935,12 @@ const fetchWeather = async () => {
   } finally {
     weatherLoading.value = false;
   }
+};
+
+// 定时轮询：刷新所有已添加城市的天气
+const refreshAllWeather = async () => {
+  if (weatherLocations.value.length === 0) return;
+  await Promise.allSettled(weatherLocations.value.map(loc => fetchWeatherFor(loc)));
 };
 
 // 天气位置搜索
@@ -878,17 +990,106 @@ const selectLocation = async (item) => {
     lat: item.lat,
     lon: item.lon
   }
-  saveWeatherLocation(location)
-  weatherLocatedName.value = item.name
+  const key = locKey(location)
+  const exists = weatherLocations.value.some(l => locKey(l) === key)
+
+  // 城市已存在则只切换激活；不存在时受数量上限约束
+  if (!exists && weatherLocations.value.length >= 5) {
+    weatherError.value = '最多添加 5 个城市'
+    locationSearchResults.value = []
+    locationSearchQuery.value = ''
+    locationInputFocused.value = false
+    return
+  }
+
+  if (!exists) {
+    weatherLocations.value.push(location)
+    saveWeatherLocations(weatherLocations.value)
+  }
+  activeLocationKey.value = key
+  saveActiveKey(key)
   locationSearchResults.value = []
   locationSearchQuery.value = ''
   locationInputFocused.value = false
 
+  // 统一走带过渡的切换逻辑（有缓存直接切换显示层，无缓存拉取后切换，避免闪烁）
+  await switchWeatherCity(key, 'left');
+};
+
+// 切换激活城市；若目标城市无数据则拉取，保留旧数据显示避免闪烁
+const switchWeatherCity = async (key, direction = 'left') => {
+  if (activeLocationKey.value === key && displayWeatherKey.value === key && weatherDataMap.value[key]) return;
+  const thisSwitchId = ++weatherSwitchId;
+  activeLocationKey.value = key;
+  saveActiveKey(key);
+  weatherError.value = '';
+  weatherTransitionName.value = direction === 'left' ? 'weather-slide-left' : 'weather-slide-right';
+
+  const hasCache = !!weatherDataMap.value[key];
+  if (hasCache) {
+    displayWeatherKey.value = key;
+    displayWeatherData.value = weatherDataMap.value[key];
+    return;
+  }
+
+  const target = weatherLocations.value.find(l => locKey(l) === key);
+  if (!target) return;
+
   try {
-    const data = await fetchWeatherData(location)
-    weatherData.value = mapWeatherData(data)
+    await fetchWeatherFor(target);
+    if (thisSwitchId !== weatherSwitchId) return;
+    displayWeatherKey.value = key;
+    displayWeatherData.value = weatherDataMap.value[key];
   } catch (err) {
-    console.warn('获取天气失败:', err)
+    if (thisSwitchId !== weatherSwitchId) return;
+    console.warn('获取天气失败:', err);
+    weatherError.value = err instanceof LocationError ? '定位失败' : '获取天气失败';
+    // 保留旧显示数据，不闪烁
+  }
+};
+
+// 删除城市；若删除的是当前激活城市则激活列表第一个
+const removeWeatherLocation = (key) => {
+  const idx = weatherLocations.value.findIndex(l => locKey(l) === key)
+  if (idx === -1) return
+  weatherLocations.value.splice(idx, 1)
+  delete weatherDataMap.value[key]
+  if (activeLocationKey.value === key) {
+    activeLocationKey.value = weatherLocations.value.length > 0 ? locKey(weatherLocations.value[0]) : ''
+    saveActiveKey(activeLocationKey.value)
+  }
+  saveWeatherLocations(weatherLocations.value)
+  weatherError.value = ''
+  syncDisplayWeather();
+};
+
+// 网页版定位按钮：自动定位后加入列表（已存在则切换），并设为激活
+const addCurrentLocation = async () => {
+  if (isUtools.value) return;
+  weatherLoading.value = true;
+  weatherError.value = '';
+  try {
+    const result = await autoLocateAndFetch()
+    const location = result.location
+    const key = locKey(location)
+    const exists = weatherLocations.value.some(l => locKey(l) === key)
+    if (!exists && weatherLocations.value.length >= 5) {
+      weatherError.value = '最多添加 5 个城市'
+      return
+    }
+    if (!exists) {
+      weatherLocations.value.push(location)
+      saveWeatherLocations(weatherLocations.value)
+    }
+    activeLocationKey.value = key
+    saveActiveKey(key)
+    // 使用带过渡的切换逻辑，避免闪烁
+    await switchWeatherCity(key, 'left');
+  } catch (err) {
+    console.warn('定位失败:', err)
+    weatherError.value = '定位失败'
+  } finally {
+    weatherLoading.value = false;
   }
 };
 
@@ -1463,11 +1664,22 @@ onMounted(() => {
   // 监听系统主题变化（web 原生方式，uTools 官方推荐）
   darkModeMediaQuery.addEventListener('change', handleSystemThemeChange);
   
-  // 获取天气数据
+  // 获取天气数据（多城市）
   if (showWeather.value) {
+    weatherLocations.value = getSavedWeatherLocations();
+    if (weatherLocations.value.length > 0) {
+      // 优先恢复持久化的激活城市；不存在（如已删除/失效）则回退到第一个并持久化回退值
+      const savedActiveKey = getSavedActiveKey()
+      const activeExists = weatherLocations.value.some(l => locKey(l) === savedActiveKey)
+      activeLocationKey.value = activeExists ? savedActiveKey : locKey(weatherLocations.value[0])
+      if (!activeExists) saveActiveKey(activeLocationKey.value)
+    }
     fetchWeather();
-    // 每30分钟刷新一次天气
-    weatherTimer = setInterval(fetchWeather, 30 * 60 * 1000);
+    // 初始化天气显示层，确保与激活 key 同步，避免初始闪烁
+    displayWeatherKey.value = activeLocationKey.value;
+    displayWeatherData.value = weatherDataMap.value[activeLocationKey.value] || null;
+    // 每30分钟刷新一次所有城市天气
+    weatherTimer = setInterval(refreshAllWeather, 30 * 60 * 1000);
   }
 });
 
@@ -1498,72 +1710,91 @@ watch(activeThemeConfig, () => {
         
         <!-- 天气摘要入口 -->
         <!-- 天气加载中 -->
-        <div v-if="showWeather && weatherLoading" class="weather-brief weather-brief-loading">
+        <div v-if="showWeather && weatherLoading && !displayWeatherData" class="weather-brief weather-brief-loading">
           <span class="weather-brief-icon">⏳</span>
           <span class="weather-brief-desc">加载天气中...</span>
         </div>
-        <div v-else-if="showWeather && weatherData" class="weather-brief"
+        <div v-else-if="showWeather && displayWeatherData" class="weather-brief"
              @mouseenter="showWeatherCard = true"
              @mouseleave="startHideWeatherCard()">
-          <span class="weather-brief-icon">{{ weatherData.icon }}</span>
-          <span class="weather-brief-temp">{{ weatherData.temp }}°C</span>
-          <span class="weather-brief-desc">{{ weatherData.desc }}</span>
-          <span v-if="weatherData.locationName" class="weather-brief-city">· {{ weatherData.locationName }}</span>
-          
+          <span class="weather-brief-icon">{{ displayWeatherData.icon }}</span>
+          <span class="weather-brief-temp">{{ displayWeatherData.temp }}°C</span>
+          <span class="weather-brief-desc">{{ displayWeatherData.desc }}</span>
+          <span v-if="displayWeatherData.locationName" class="weather-brief-city">· {{ displayWeatherData.locationName }}</span>
+
           <!-- 悬停详情卡片 -->
           <div v-if="showWeatherCard" class="weather-card"
                @mouseenter="cancelHideWeatherCard()"
                @mouseleave="startHideWeatherCard()">
-            <!-- 当前天气 -->
-            <div class="weather-card-current">
-              <div class="weather-card-main">
-                <span class="weather-card-icon">{{ weatherData.icon }}</span>
-                <div class="weather-card-temp-wrap">
-                  <span class="weather-card-temp" :style="{ color: getTempColor(weatherData.temp) }">{{ weatherData.temp }}°C</span>
-                  <span class="weather-card-desc">{{ weatherData.desc }}</span>
-                </div>
-              </div>
-              <div class="weather-card-detail">
-                <div class="detail-cell">
-                  <span class="detail-label">体感</span>
-                  <span class="detail-value">{{ weatherData.feelsLike }}°C</span>
-                </div>
-                <div class="detail-cell">
-                  <span class="detail-label">湿度</span>
-                  <span class="detail-value">{{ weatherData.humidity }}%</span>
-                </div>
-                <div class="detail-cell">
-                  <span class="detail-label">风速</span>
-                  <span class="detail-value">{{ weatherData.windSpeed }}km/h</span>
-                </div>
-              </div>
-              <div v-if="weatherData.locationName" class="weather-card-location">
-                📍 {{ weatherData.locationName }}
-              </div>
+            <button v-if="weatherLocations.length > 1" class="weather-nav-btn prev" @click.stop="switchPrevCity">‹</button>
+            <button v-if="weatherLocations.length > 1" class="weather-nav-btn next" @click.stop="switchNextCity">›</button>
+            <!-- 城市切换 Tab（多城市时显示） -->
+            <div v-if="weatherLocations.length > 1" class="weather-city-tabs">
+              <button
+                v-for="(loc, idx) in weatherLocations" :key="locKey(loc)"
+                class="weather-city-tab"
+                :class="{ active: activeLocationKey === locKey(loc) }"
+                @click="switchWeatherCity(locKey(loc), weatherLocations.findIndex(l => locKey(l) === activeLocationKey) > idx ? 'right' : 'left')"
+              >{{ loc.name }}</button>
             </div>
-            <!-- 逐小时预报 -->
-            <div v-if="weatherData.hourly && weatherData.hourly.length" class="weather-hourly">
-              <div class="weather-hourly-scroll">
-                <div v-for="(item, idx) in weatherData.hourly" :key="idx" class="weather-hourly-item">
-                  <span class="hourly-time">{{ item.hour }}</span>
-                  <span class="hourly-icon">{{ item.icon }}</span>
-                  <span class="hourly-temp" :style="{ color: getTempColor(item.temp) }">{{ item.temp }}°</span>
+            <!-- 内容区带左右切换过渡 -->
+            <Transition :name="weatherTransitionName" mode="out-in">
+              <div :key="displayWeatherKey" class="weather-card-body"
+                   @wheel="onWeatherWheel"
+                   @touchstart="onWeatherTouchStart"
+                   @touchend="onWeatherTouchEnd">
+                <!-- 当前天气 -->
+                <div class="weather-card-current">
+                  <div class="weather-card-main">
+                    <span class="weather-card-icon">{{ displayWeatherData.icon }}</span>
+                    <div class="weather-card-temp-wrap">
+                      <span class="weather-card-temp" :style="{ color: getTempColor(displayWeatherData.temp) }">{{ displayWeatherData.temp }}°C</span>
+                      <span class="weather-card-desc">{{ displayWeatherData.desc }}</span>
+                    </div>
+                  </div>
+                  <div class="weather-card-detail">
+                    <div class="detail-cell">
+                      <span class="detail-label">体感</span>
+                      <span class="detail-value">{{ displayWeatherData.feelsLike }}°C</span>
+                    </div>
+                    <div class="detail-cell">
+                      <span class="detail-label">湿度</span>
+                      <span class="detail-value">{{ displayWeatherData.humidity }}%</span>
+                    </div>
+                    <div class="detail-cell">
+                      <span class="detail-label">风速</span>
+                      <span class="detail-value">{{ displayWeatherData.windSpeed }}km/h</span>
+                    </div>
+                  </div>
+                  <div v-if="displayWeatherData.locationName" class="weather-card-location">
+                    📍 {{ displayWeatherData.locationName }}
+                  </div>
+                </div>
+                <!-- 逐小时预报 -->
+                <div v-if="displayWeatherData.hourly && displayWeatherData.hourly.length" class="weather-hourly">
+                  <div class="weather-hourly-scroll">
+                    <div v-for="(item, idx) in displayWeatherData.hourly" :key="idx" class="weather-hourly-item">
+                      <span class="hourly-time">{{ item.hour }}</span>
+                      <span class="hourly-icon">{{ item.icon }}</span>
+                      <span class="hourly-temp" :style="{ color: getTempColor(item.temp) }">{{ item.temp }}°</span>
+                    </div>
+                  </div>
+                </div>
+                <!-- 未来预报 -->
+                <div v-if="displayWeatherData.forecast && displayWeatherData.forecast.length" class="weather-card-forecast">
+                  <div v-for="(day, idx) in displayWeatherData.forecast" :key="idx" class="weather-card-forecast-item">
+                    <span class="forecast-date">{{ formatForecastDate(day.date) }}</span>
+                    <span class="forecast-icon">{{ day.icon }}</span>
+                    <span class="forecast-desc">{{ day.desc }}</span>
+                    <span class="forecast-temp">
+                      <span :style="{ color: getTempColor(day.minTemp) }">{{ day.minTemp }}°</span>
+                      <span class="forecast-temp-divider">~</span>
+                      <span :style="{ color: getTempColor(day.maxTemp) }">{{ day.maxTemp }}°</span>
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-            <!-- 未来预报 -->
-            <div v-if="weatherData.forecast && weatherData.forecast.length" class="weather-card-forecast">
-              <div v-for="(day, idx) in weatherData.forecast" :key="idx" class="weather-card-forecast-item">
-                <span class="forecast-date">{{ formatForecastDate(day.date) }}</span>
-                <span class="forecast-icon">{{ day.icon }}</span>
-                <span class="forecast-desc">{{ day.desc }}</span>
-                <span class="forecast-temp">
-                  <span :style="{ color: getTempColor(day.minTemp) }">{{ day.minTemp }}°</span>
-                  <span class="forecast-temp-divider">~</span>
-                  <span :style="{ color: getTempColor(day.maxTemp) }">{{ day.maxTemp }}°</span>
-                </span>
-              </div>
-            </div>
+            </Transition>
           </div>
         </div>
         <!-- 天气加载失败 -->
@@ -1779,7 +2010,7 @@ watch(activeThemeConfig, () => {
                     :placeholder="locationInputFocused || locationSearchQuery ? '搜索城市/区镇' : (weatherLocatedName || '搜索城市/区镇')"
                     class="location-input"
                   />
-                  <span v-if="!isUtools" class="location-auto-btn" @click="saveWeatherLocation(null); clearLocationSearch(); fetchWeather();">
+                  <span v-if="!isUtools" class="location-auto-btn" title="添加定位城市" @click="addCurrentLocation()">
                     <LocateFixed :size="12" />
                   </span>
                   <div v-if="locationSearchResults.length > 0" class="location-results">
@@ -1796,6 +2027,22 @@ watch(activeThemeConfig, () => {
                   <div v-else-if="locationSearching" class="location-results">
                     <div class="location-result-item location-searching">搜索中...</div>
                   </div>
+                </div>
+                <!-- 已添加城市列表 -->
+                <div v-if="weatherLocations.length > 0" class="weather-city-list">
+                  <div
+                    v-for="(loc, idx) in weatherLocations" :key="locKey(loc)"
+                    class="weather-city-item"
+                    :class="{ active: activeLocationKey === locKey(loc) }"
+                    @click="switchWeatherCity(locKey(loc), weatherLocations.findIndex(l => locKey(l) === activeLocationKey) > idx ? 'right' : 'left')"
+                  >
+                    <span class="city-item-name">{{ loc.name }}</span>
+                    <span v-if="activeLocationKey === locKey(loc)" class="city-item-badge">当前</span>
+                    <span class="city-item-del" title="删除" @click.stop="removeWeatherLocation(locKey(loc))">
+                      <X :size="12" />
+                    </span>
+                  </div>
+                  <div v-if="weatherLocations.length >= 5" class="city-list-hint">最多添加 5 个城市</div>
                 </div>
               </div>
             </div>
@@ -3176,6 +3423,117 @@ watch(activeThemeConfig, () => {
   border-radius: 2px;
 }
 
+/* 多城市切换 Tab */
+.weather-city-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  margin: -14px -16px 10px -16px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--almanac-line);
+  scrollbar-width: none;
+}
+
+.weather-city-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.weather-city-tab {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  border: none;
+  background: var(--hover-bg);
+  color: var(--secondary-text);
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.weather-city-tab:hover {
+  background: var(--border-color);
+}
+
+.weather-city-tab.active {
+  background: var(--primary-color);
+  color: #ffffff;
+}
+
+/* 已添加城市列表 */
+.weather-city-list {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.weather-city-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: var(--hover-bg);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.weather-city-item:hover {
+  background: var(--border-color);
+}
+
+.weather-city-item.active {
+  border-color: var(--primary-color);
+}
+
+.city-item-name {
+  flex: 1;
+  font-size: 0.75rem;
+  color: var(--text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.city-item-badge {
+  flex-shrink: 0;
+  font-size: 0.6rem;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--primary-color);
+  color: #ffffff;
+}
+
+.city-item-del {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  color: var(--secondary-text);
+  opacity: 0.6;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.city-item-del:hover {
+  color: #e74c3c;
+  opacity: 1;
+  background: rgba(231, 76, 60, 0.1);
+}
+
+.city-list-hint {
+  font-size: 0.65rem;
+  color: var(--secondary-text);
+  opacity: 0.7;
+  text-align: center;
+  padding: 2px 0;
+}
+
 .weather-card-current {
   padding-bottom: 12px;
   border-bottom: 1px solid var(--almanac-line);
@@ -3521,6 +3879,76 @@ watch(activeThemeConfig, () => {
 }
 
 /* 节日类型标签样式 - 统一使用主题色（在 .festival-item-type 中定义） */
+
+/* 天气卡片左右切换过渡 */
+.weather-slide-left-enter-active,
+.weather-slide-left-leave-active,
+.weather-slide-right-enter-active,
+.weather-slide-right-leave-active {
+  transition: all 0.28s ease;
+}
+
+.weather-slide-left-enter-from {
+  opacity: 0;
+  transform: translateX(40px);
+}
+.weather-slide-left-leave-to {
+  opacity: 0;
+  transform: translateX(-40px);
+}
+
+.weather-slide-right-enter-from {
+  opacity: 0;
+  transform: translateX(-40px);
+}
+.weather-slide-right-leave-to {
+  opacity: 0;
+  transform: translateX(40px);
+}
+
+/* 天气卡片内左右切换按钮 */
+.weather-card {
+  position: relative;
+}
+
+.weather-nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: none;
+  background: var(--hover-bg);
+  color: var(--secondary-text);
+  font-size: 1rem;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s ease;
+  pointer-events: none;
+}
+
+.weather-card:hover .weather-nav-btn {
+  opacity: 0.7;
+  pointer-events: auto;
+}
+
+.weather-nav-btn:hover {
+  opacity: 1 !important;
+  background: var(--border-color);
+}
+
+.weather-nav-btn.prev {
+  left: 4px;
+}
+
+.weather-nav-btn.next {
+  right: 4px;
+}
 </style>
 
 <style>
