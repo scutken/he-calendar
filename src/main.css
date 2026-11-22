@@ -6,6 +6,8 @@ body,
   height: 100vh;
   width: 100vw;
   overflow: hidden;
+  /* clip 不允许程序化滚动：避免聚焦弹层（scrollIntoView）把整个页面顶偏，露出大片空白 */
+  overflow: clip;
 }
 
 /* 网页版背景 - 大屏幕时显示简约优雅的背景 */
@@ -24,12 +26,10 @@ body,
   box-sizing: border-box;
 }
 
-/* Scrollbar Style */
-html {
-  scrollbar-color: var(--scrollbar-thumb, rgba(0, 0, 0, 0.1)) transparent;
-  scrollbar-width: thin;
-}
-
+/* Scrollbar Style
+   注意：Chromium 里一旦使用了标准属性 scrollbar-width / scrollbar-color，
+   就会忽略 ::-webkit-scrollbar 定义的细滚动条，退回系统原生粗滚动条（带箭头、约 16px）。
+   所以这里统一只用 ::-webkit-scrollbar，保证网页版与 uTools 都是细滚动条。 */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -48,37 +48,34 @@ html {
   background: var(--scrollbar-thumb-hover, rgba(0, 0, 0, 0.2));
 }
 
-/* uTools WebView 滚动条兼容：显式颜色 + 强制显示 */
-body.is-utools {
-  scrollbar-color: auto;
-}
-
+/* uTools WebView 滚动条兼容：显式颜色，宽度与网页版保持一致 */
 .is-utools ::-webkit-scrollbar {
-  width: 8px !important;
-  height: 8px !important;
+  width: 6px !important;
+  height: 6px !important;
 }
 
 .is-utools ::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.06) !important;
-  border-radius: 4px !important;
+  background: rgba(0, 0, 0, 0.05) !important;
+  border-radius: 3px !important;
 }
 
 .is-utools ::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.2) !important;
-  border-radius: 4px !important;
+  border-radius: 3px !important;
 }
 
 .is-utools ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.35) !important;
 }
 
-.is-utools .weather-card,
-.is-utools .weather-hourly-scroll {
-  scrollbar-width: auto !important;
-  scrollbar-color: auto !important;
+/* uTools 下同样保持细滚动条：面板与天气卡片再窄一点（4px） */
+.is-utools .almanac-panel::-webkit-scrollbar,
+.is-utools .settings-panel::-webkit-scrollbar,
+.is-utools .weather-card::-webkit-scrollbar {
+  width: 4px !important;
 }
 
-.is-utools .weather-card {
-  overflow-y: scroll !important;
+.is-utools .weather-hourly-scroll::-webkit-scrollbar {
+  height: 4px !important;
 }
 
